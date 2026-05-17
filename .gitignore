@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+.expo-shared/
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+.runtimeconfig.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Native build artifacts (managed workflow — no local native dirs expected)
+android/
+ios/
