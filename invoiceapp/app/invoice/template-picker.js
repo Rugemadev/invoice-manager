@@ -26,11 +26,12 @@ function TemplateCard({ template, onPress }) {
 
 export default function TemplatePicker() {
   const router = useRouter();
-  const { type } = useLocalSearchParams();
-  const label = type === 'proforma' ? 'Proforma Invoice' : 'Invoice';
+  const { type, docTitle } = useLocalSearchParams();
+  const label = docTitle ? decodeURIComponent(docTitle) : (type === 'proforma' ? 'Proforma Invoice' : 'Invoice');
 
   const handleSelect = (templateId) => {
-    router.push(`/invoice/create?type=${type}&templateId=${templateId}`);
+    const dtParam = docTitle ? `&docTitle=${docTitle}` : '';
+    router.push(`/invoice/create?type=${type}&templateId=${templateId}${dtParam}`);
   };
 
   return (

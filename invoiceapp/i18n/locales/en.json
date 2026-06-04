@@ -16,6 +16,7 @@
     "dashboard": "Dashboard",
     "invoices": "Invoices",
     "clients": "Clients",
+    "reports": "Reports",
     "settings": "Settings"
   },
   "dashboard": {

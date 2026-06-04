@@ -1,8 +1,8 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getTemplate } from '../constants/templates';
-import { getSettings, getBusinessLogo } from './storage';
+import { getSettings, getBusinessLogo, getStampPhoto } from './storage';
 
 export function generateId() {
   return Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -41,11 +41,24 @@ async function uriToBase64(uri) {
   if (!uri) return null;
   if (uri.startsWith('data:')) return uri;
   try {
-    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
     const ext = uri.split('.').pop().toLowerCase().split('?')[0];
     const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
     return `data:${mime};base64,${base64}`;
   } catch { return null; }
+}
+
+// ─── HTML escaping ────────────────────────────────────────────────────────────
+// Escapes characters that have special meaning in HTML so that user-supplied
+// strings cannot inject markup or scripts into the invoice WebView.
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ─── Social footer ────────────────────────────────────────────────────────────
@@ -65,12 +78,12 @@ function buildSocialFooter(from, primaryColor, style) {
   const textColor = isDark ? '#94A3B8' : '#6B7280';
 
   const items = [
-    ig   ? `<div style="display:flex;align-items:center;gap:5px">${IG_ICON(primaryColor)}<span style="font-size:11px;color:${primaryColor};font-weight:500">${ig}</span></div>` : '',
-    mail ? `<div style="display:flex;align-items:center;gap:5px">${MAIL_ICON(primaryColor)}<span style="font-size:11px;color:${textColor}">${mail}</span></div>` : '',
-    web  ? `<div style="display:flex;align-items:center;gap:5px">${WEB_ICON(primaryColor)}<span style="font-size:11px;color:${textColor}">${web}</span></div>` : '',
+    ig   ? `<div style="display:flex;align-items:center;gap:5px">${IG_ICON(primaryColor)}<span style="font-size:11px;color:${primaryColor};font-weight:500">${escHtml(ig)}</span></div>` : '',
+    mail ? `<div style="display:flex;align-items:center;gap:5px">${MAIL_ICON(primaryColor)}<span style="font-size:11px;color:${textColor}">${escHtml(mail)}</span></div>` : '',
+    web  ? `<div style="display:flex;align-items:center;gap:5px">${WEB_ICON(primaryColor)}<span style="font-size:11px;color:${textColor}">${escHtml(web)}</span></div>` : '',
   ].filter(Boolean).join('');
 
-  return `<div style="margin-top:28px;padding-top:16px;border-top:1px solid ${borderColor};display:flex;gap:20px;flex-wrap:wrap;align-items:center">${items}</div>`;
+  return `<div style="margin-top:12px;padding-top:10px;border-top:1px solid ${borderColor};display:flex;gap:20px;flex-wrap:wrap;align-items:center">${items}</div>`;
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -78,29 +91,29 @@ function buildSocialFooter(from, primaryColor, style) {
 function itemRows(items, currency) {
   return (items ?? []).map(item => {
     if (item.type === 'section') {
-      return { type: 'section', desc: item.description, extra: '', qty: '', price: '', total: '' };
+      return { type: 'section', desc: escHtml(item.description), extra: '', qty: '', price: '', total: '' };
     }
     const lineTotal = Math.round((parseFloat(item.qty) || 0) * (parseFloat(item.unitPrice) || 0));
     const qty = parseFloat(item.qty) % 1 === 0 ? parseInt(item.qty, 10) : parseFloat(item.qty);
-    return { type: 'item', desc: item.description, notes: item.notes ?? '', extra: item.extra ?? '', qty, price: formatCurrency(item.unitPrice, currency), total: formatCurrency(lineTotal, currency) };
+    return { type: 'item', desc: escHtml(item.description), notes: escHtml(item.notes ?? ''), extra: escHtml(item.extra ?? ''), qty, price: formatCurrency(item.unitPrice, currency), total: formatCurrency(lineTotal, currency) };
   });
 }
 
 function fromBlock(from, color) {
   return `
-    <div style="font-size:14px;font-weight:700;color:inherit">${from?.name ?? ''}</div>
-    ${from?.address ? `<div style="font-size:12px;line-height:1.5;margin-top:3px">${from.address.replace(/\n/g,'<br/>')}</div>` : ''}
-    ${from?.tin    ? `<div style="font-size:12px;margin-top:2px">TIN: ${from.tin}</div>` : ''}
-    ${from?.phone  ? `<div style="font-size:12px">${from.phone}</div>` : ''}
-    ${from?.email  ? `<div style="font-size:12px;color:${color}">${from.email}</div>` : ''}`;
+    <div style="font-size:14px;font-weight:700;color:inherit">${escHtml(from?.name)}</div>
+    ${from?.address ? `<div style="font-size:12px;line-height:1.5;margin-top:3px">${escHtml(from.address).replace(/\n/g,'<br/>')}</div>` : ''}
+    ${from?.tin    ? `<div style="font-size:12px;margin-top:2px">TIN: ${escHtml(from.tin)}</div>` : ''}
+    ${from?.phone  ? `<div style="font-size:12px">${escHtml(from.phone)}</div>` : ''}
+    ${from?.email  ? `<div style="font-size:12px;color:${color}">${escHtml(from.email)}</div>` : ''}`;
 }
 
 function toBlock(to, color) {
   return `
-    <div style="font-size:14px;font-weight:700;color:inherit">${to?.name ?? ''}</div>
-    ${to?.address ? `<div style="font-size:12px;line-height:1.5;margin-top:3px">${to.address.replace(/\n/g,'<br/>')}</div>` : ''}
-    ${to?.tin     ? `<div style="font-size:12px;margin-top:2px">TIN: ${to.tin}</div>` : ''}
-    ${to?.email   ? `<div style="font-size:12px;color:${color}">${to.email}</div>` : ''}`;
+    <div style="font-size:14px;font-weight:700;color:inherit">${escHtml(to?.name)}</div>
+    ${to?.address ? `<div style="font-size:12px;line-height:1.5;margin-top:3px">${escHtml(to.address).replace(/\n/g,'<br/>')}</div>` : ''}
+    ${to?.tin     ? `<div style="font-size:12px;margin-top:2px">TIN: ${escHtml(to.tin)}</div>` : ''}
+    ${to?.email   ? `<div style="font-size:12px;color:${color}">${escHtml(to.email)}</div>` : ''}`;
 }
 
 // ─── Template builders ────────────────────────────────────────────────────────
@@ -121,63 +134,62 @@ function buildModern(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, pa
 
   const trs = rows.map((r, i) => {
     if (r.type === 'section') {
-      return `<tr><td colspan="${colCount}" style="padding:10px 14px;font-size:13px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
+      return `<tr><td colspan="${colCount}" style="padding:5px 12px;font-size:12px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
     }
     return `
     <tr style="background:${i % 2 === 0 ? '#fff' : lc + '55'}">
-      <td style="padding:11px 14px;font-size:13px">${r.desc}${r.notes ? `<div style="font-size:11px;color:#94A3B8;margin-top:3px;font-style:italic">${r.notes}</div>` : ''}</td>
-      ${hasExtra ? `<td style="padding:11px 14px;font-size:13px">${r.extra}</td>` : ''}
-      <td style="padding:11px 14px;text-align:center;font-size:13px">${r.qty}</td>
-      <td style="padding:11px 14px;text-align:right;font-size:13px">${r.price}</td>
-      <td style="padding:11px 14px;text-align:right;font-size:13px;font-weight:600">${r.total}</td>
+      <td style="padding:6px 12px;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      ${hasExtra ? `<td style="padding:6px 12px;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:6px 12px;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:6px 12px;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:6px 12px;text-align:right;font-size:12px;font-weight:600">${r.total}</td>
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
-<body style="margin:0;padding:0;background:#F1F5F9;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
-<div style="max-width:800px;margin:0 auto;padding:40px">
-  <div style="background:${p};border-radius:16px;padding:36px 40px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:flex-start">
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+<div style="max-width:800px;margin:0 auto;padding:22px 28px;background:#F1F5F9">
+  <div style="background:${p};border-radius:16px;padding:20px 26px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-start">
     <div>
-      ${logoSrc ? `<img src="${logoSrc}" style="height:64px;max-width:160px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:14px"/>` : ''}
-      <div style="font-size:30px;font-weight:900;color:${ht};letter-spacing:-0.5px">${docTitle}</div>
+      ${logoSrc ? `<img src="${logoSrc}" style="height:80px;max-width:200px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:10px"/>` : ''}
+      <div style="font-size:26px;font-weight:900;color:${ht};letter-spacing:-0.5px">${docTitle}</div>
     </div>
     <div style="text-align:right;color:${ht}">
-      <div style="font-size:20px;font-weight:700">${inv.number}</div>
-      <div style="opacity:0.8;margin-top:6px;font-size:13px">${formatDate(inv.date)}</div>
-      ${inv.dueDate ? `<div style="opacity:0.7;font-size:12px">Due ${formatDate(inv.dueDate)}</div>` : ''}
-      <div style="margin-top:10px;display:inline-block;background:rgba(255,255,255,0.22);border-radius:20px;padding:4px 14px;font-size:10px;font-weight:700;letter-spacing:1px">${(inv.status ?? 'DRAFT').toUpperCase()}</div>
+      <div style="font-size:18px;font-weight:700">${inv.number}</div>
+      <div style="opacity:0.8;margin-top:4px;font-size:12px">${formatDate(inv.date)}</div>
+      ${inv.dueDate ? `<div style="opacity:0.7;font-size:11px">Due ${formatDate(inv.dueDate)}</div>` : ''}
     </div>
   </div>
-  <div style="display:flex;gap:16px;margin-bottom:28px">
-    <div style="flex:1;background:#fff;border-radius:12px;padding:22px;color:#1E293B">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:10px">From</div>
+  <div style="display:flex;gap:12px;margin-bottom:12px">
+    <div style="flex:1;background:#fff;border-radius:12px;padding:14px 16px;color:#1E293B">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:6px">From</div>
       ${fromBlock(inv.from, p)}
     </div>
-    <div style="flex:1;background:#fff;border-radius:12px;padding:22px;color:#1E293B">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:10px">Billed To</div>
+    <div style="flex:1;background:#fff;border-radius:12px;padding:14px 16px;color:#1E293B">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:6px">Billed To</div>
       ${toBlock(inv.to, p)}
     </div>
   </div>
-  <div style="background:#fff;border-radius:12px;overflow:hidden;margin-bottom:20px">
+  <div style="background:#fff;border-radius:12px;overflow:hidden;margin-bottom:12px">
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
       <thead><tr style="background:${lc}">
-        <th style="padding:12px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${descW}">${descLabel}</th>
-        ${hasExtra ? `<th style="padding:12px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${extraW}">${extraLabel}</th>` : ''}
-        <th style="padding:12px 14px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${qtyW}">${qtyLabel}</th>
-        <th style="padding:12px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${numW}">${priceLabel}</th>
-        <th style="padding:12px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${numW}">Total</th>
+        <th style="padding:7px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${descW}">${descLabel}</th>
+        ${hasExtra ? `<th style="padding:7px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${extraW}">${extraLabel}</th>` : ''}
+        <th style="padding:7px 12px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${qtyW}">${qtyLabel}</th>
+        <th style="padding:7px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${numW}">${priceLabel}</th>
+        <th style="padding:7px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};width:${numW}">Total</th>
       </tr></thead>
       <tbody>${trs}</tbody>
     </table>
   </div>
-  <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
-    <div style="background:#fff;border-radius:12px;padding:20px 24px;min-width:280px">
-      <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px;color:#64748B"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px;color:#64748B;border-bottom:1px solid #E2E8F0"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:12px 0 4px;font-size:18px;font-weight:800;color:${p}"><span>TOTAL</span><span>${formatCurrency(total, cur)}</span></div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <div style="background:#fff;border-radius:12px;padding:12px 18px;min-width:260px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748B"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748B;border-bottom:1px solid #E2E8F0"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0 2px;font-size:17px;font-weight:800;color:${p}"><span>TOTAL</span><span>${formatCurrency(total, cur)}</span></div>
     </div>
   </div>
-  ${notes ? `<div style="background:#fff;border-radius:12px;padding:18px;margin-bottom:18px;font-size:12px;color:#64748B"><strong style="color:#1E293B">Notes: </strong>${notes}</div>` : ''}
-  ${sig}${social}${payHtml}
+  ${notes ? `<div style="background:#fff;border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#64748B"><strong style="color:#1E293B">Notes: </strong>${notes}</div>` : ''}
+  ${payHtml}${social}
 </div></body></html>`;
 }
 
@@ -197,67 +209,66 @@ function buildClassic(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, p
 
   const trs = rows.map((r, i) => {
     if (r.type === 'section') {
-      return `<tr><td colspan="${colCount}" style="padding:10px 14px;border-bottom:1px solid #E2E8F0;font-size:13px;font-weight:700;color:${p}">${r.desc}</td></tr>`;
+      return `<tr><td colspan="${colCount}" style="padding:5px 12px;border-bottom:1px solid #E2E8F0;font-size:12px;font-weight:700;color:${p}">${r.desc}</td></tr>`;
     }
     return `
     <tr style="${i % 2 !== 0 ? `background:${lc}44` : ''}">
-      <td style="padding:11px 14px;border-bottom:1px solid #E2E8F0;font-size:13px">${r.desc}${r.notes ? `<div style="font-size:11px;color:#94A3B8;margin-top:3px;font-style:italic">${r.notes}</div>` : ''}</td>
-      ${hasExtra ? `<td style="padding:11px 14px;border-bottom:1px solid #E2E8F0;font-size:13px">${r.extra}</td>` : ''}
-      <td style="padding:11px 14px;border-bottom:1px solid #E2E8F0;text-align:center;font-size:13px">${r.qty}</td>
-      <td style="padding:11px 14px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:13px">${r.price}</td>
-      <td style="padding:11px 14px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:13px;font-weight:600">${r.total}</td>
+      <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      ${hasExtra ? `<td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:12px;font-weight:600">${r.total}</td>
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:Georgia,'Times New Roman',serif;color:#1a1a1a">
-  <div style="height:10px;background:${p}"></div>
-  <div style="max-width:800px;margin:0 auto;padding:40px">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:24px;border-bottom:2px solid ${p};margin-bottom:28px">
+  <div style="height:8px;background:${p}"></div>
+  <div style="max-width:800px;margin:0 auto;padding:22px 28px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:2px solid ${p};margin-bottom:14px">
       <div>
-        ${logoSrc ? `<img src="${logoSrc}" style="height:64px;max-width:160px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:14px"/>` : ''}
-        <div style="font-size:28px;font-weight:700;color:${p};font-family:Helvetica,Arial,sans-serif">${docTitle}</div>
+        ${logoSrc ? `<img src="${logoSrc}" style="height:80px;max-width:200px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:10px"/>` : ''}
+        <div style="font-size:24px;font-weight:700;color:${p};font-family:Helvetica,Arial,sans-serif">${docTitle}</div>
       </div>
       <div style="text-align:right;font-family:Helvetica,Arial,sans-serif">
-        <div style="font-size:22px;font-weight:700">${inv.number}</div>
-        <div style="color:#666;margin-top:4px;font-size:13px">${formatDate(inv.date)}</div>
-        ${inv.dueDate ? `<div style="color:#666;font-size:12px">Due: ${formatDate(inv.dueDate)}</div>` : ''}
-        <div style="margin-top:8px;display:inline-block;border:1.5px solid ${p};color:${p};border-radius:4px;padding:2px 10px;font-size:10px;font-weight:700">${(inv.status ?? 'DRAFT').toUpperCase()}</div>
+        <div style="font-size:20px;font-weight:700">${inv.number}</div>
+        <div style="color:#666;margin-top:3px;font-size:12px">${formatDate(inv.date)}</div>
+        ${inv.dueDate ? `<div style="color:#666;font-size:11px">Due: ${formatDate(inv.dueDate)}</div>` : ''}
       </div>
     </div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:32px;font-family:Helvetica,Arial,sans-serif">
+    <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-family:Helvetica,Arial,sans-serif">
       <div>
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${p};border-bottom:1px solid ${p};padding-bottom:3px;margin-bottom:10px">From</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${p};border-bottom:1px solid ${p};padding-bottom:2px;margin-bottom:7px">From</div>
         ${fromBlock(inv.from, p)}
       </div>
       <div style="text-align:right">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${p};border-bottom:1px solid ${p};padding-bottom:3px;margin-bottom:10px">Bill To</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${p};border-bottom:1px solid ${p};padding-bottom:2px;margin-bottom:7px">Bill To</div>
         ${toBlock(inv.to, p)}
       </div>
     </div>
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-family:Helvetica,Arial,sans-serif;margin-bottom:24px">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-family:Helvetica,Arial,sans-serif;margin-bottom:12px">
       <thead><tr style="background:${p}">
-        <th style="padding:12px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${descW}">${descLabel}</th>
-        ${hasExtra ? `<th style="padding:12px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${extraW}">${extraLabel}</th>` : ''}
-        <th style="padding:12px 14px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${qtyW}">${qtyLabel}</th>
-        <th style="padding:12px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${numW}">${priceLabel}</th>
-        <th style="padding:12px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${numW}">Total</th>
+        <th style="padding:7px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${descW}">${descLabel}</th>
+        ${hasExtra ? `<th style="padding:7px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${extraW}">${extraLabel}</th>` : ''}
+        <th style="padding:7px 12px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${qtyW}">${qtyLabel}</th>
+        <th style="padding:7px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${numW}">${priceLabel}</th>
+        <th style="padding:7px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${ht};width:${numW}">Total</th>
       </tr></thead>
       <tbody>${trs}</tbody>
     </table>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
-      <table style="width:280px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;font-size:13px">
-        <tr><td style="padding:7px 0;color:#666">Subtotal</td><td style="padding:7px 0;text-align:right">${formatCurrency(sub, cur)}</td></tr>
-        <tr><td style="padding:7px 0;color:#666">VAT (${inv.vatRate ?? 0}%)</td><td style="padding:7px 0;text-align:right">${formatCurrency(vat, cur)}</td></tr>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+      <table style="width:260px;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;font-size:12px">
+        <tr><td style="padding:4px 0;color:#666">Subtotal</td><td style="padding:4px 0;text-align:right">${formatCurrency(sub, cur)}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">VAT (${inv.vatRate ?? 0}%)</td><td style="padding:4px 0;text-align:right">${formatCurrency(vat, cur)}</td></tr>
         <tr style="border-top:2px solid ${p}">
-          <td style="padding:12px 0;font-weight:700;font-size:16px;color:${p}">TOTAL</td>
-          <td style="padding:12px 0;text-align:right;font-weight:700;font-size:16px;color:${p}">${formatCurrency(total, cur)}</td>
+          <td style="padding:8px 0;font-weight:700;font-size:15px;color:${p}">TOTAL</td>
+          <td style="padding:8px 0;text-align:right;font-weight:700;font-size:15px;color:${p}">${formatCurrency(total, cur)}</td>
         </tr>
       </table>
     </div>
-    ${notes ? `<p style="font-size:12px;color:#666;font-family:Helvetica,Arial,sans-serif"><strong style="color:#1a1a1a">Notes: </strong>${notes}</p>` : ''}
-    ${sig}${social}${payHtml}
+    ${notes ? `<p style="font-size:12px;color:#666;font-family:Helvetica,Arial,sans-serif;margin:0 0 10px"><strong style="color:#1a1a1a">Notes: </strong>${notes}</p>` : ''}
+    ${payHtml}${social}
   </div>
-  <div style="height:6px;background:${p};margin-top:40px"></div>
+  <div style="height:5px;background:${p};margin-top:20px"></div>
 </body></html>`;
 }
 
@@ -277,62 +288,62 @@ function buildMinimal(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, p
 
   const trs = rows.map(r => {
     if (r.type === 'section') {
-      return `<tr><td colspan="${colCount}" style="padding:10px 0;border-bottom:1px solid #F1F5F9;font-size:13px;font-weight:700;color:${p}">${r.desc}</td></tr>`;
+      return `<tr><td colspan="${colCount}" style="padding:5px 0;border-bottom:1px solid #F1F5F9;font-size:12px;font-weight:700;color:${p}">${r.desc}</td></tr>`;
     }
     return `
     <tr>
-      <td style="padding:13px 0;border-bottom:1px solid #F1F5F9;font-size:13px">${r.desc}${r.notes ? `<div style="font-size:11px;color:#94A3B8;margin-top:3px;font-style:italic">${r.notes}</div>` : ''}</td>
-      ${hasExtra ? `<td style="padding:13px 0;border-bottom:1px solid #F1F5F9;font-size:13px">${r.extra}</td>` : ''}
-      <td style="padding:13px 0;border-bottom:1px solid #F1F5F9;text-align:center;font-size:13px">${r.qty}</td>
-      <td style="padding:13px 0;border-bottom:1px solid #F1F5F9;text-align:right;font-size:13px">${r.price}</td>
-      <td style="padding:13px 0;border-bottom:1px solid #F1F5F9;text-align:right;font-size:13px;font-weight:600">${r.total}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      ${hasExtra ? `<td style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;text-align:right;font-size:12px;font-weight:600">${r.total}</td>
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#111">
-<div style="max-width:720px;margin:0 auto;padding:60px">
-  <div style="display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:28px;border-bottom:1px solid #E5E7EB;margin-bottom:52px">
+<div style="max-width:720px;margin:0 auto;padding:32px 40px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:16px;border-bottom:1px solid #E5E7EB;margin-bottom:24px">
     <div>
-      ${logoSrc ? `<img src="${logoSrc}" style="height:56px;max-width:140px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:18px"/>` : ''}
+      ${logoSrc ? `<img src="${logoSrc}" style="height:76px;max-width:190px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:12px"/>` : ''}
       <div style="font-size:10px;font-weight:500;letter-spacing:4px;text-transform:uppercase;color:${p}">${docTitle}</div>
     </div>
     <div style="text-align:right">
-      <div style="font-size:26px;font-weight:300;letter-spacing:-0.5px">${inv.number}</div>
-      <div style="font-size:12px;color:#9CA3AF;margin-top:6px">${formatDate(inv.date)}</div>
-      ${inv.dueDate ? `<div style="font-size:12px;color:#9CA3AF">Due ${formatDate(inv.dueDate)}</div>` : ''}
+      <div style="font-size:22px;font-weight:300;letter-spacing:-0.5px">${inv.number}</div>
+      <div style="font-size:12px;color:#9CA3AF;margin-top:4px">${formatDate(inv.date)}</div>
+      ${inv.dueDate ? `<div style="font-size:11px;color:#9CA3AF">Due ${formatDate(inv.dueDate)}</div>` : ''}
     </div>
   </div>
-  <div style="display:flex;gap:60px;margin-bottom:52px">
+  <div style="display:flex;gap:40px;margin-bottom:24px">
     <div style="flex:1">
-      <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#9CA3AF;margin-bottom:12px">From</div>
+      <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#9CA3AF;margin-bottom:8px">From</div>
       ${fromBlock(inv.from, p)}
     </div>
     <div style="flex:1">
-      <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#9CA3AF;margin-bottom:12px">Billed To</div>
+      <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#9CA3AF;margin-bottom:8px">Billed To</div>
       ${toBlock(inv.to, p)}
     </div>
   </div>
-  <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:44px">
+  <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:20px">
     <thead><tr style="border-bottom:1px solid #E5E7EB">
-      <th style="padding-bottom:14px;text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${descW}">${descLabel}</th>
-      ${hasExtra ? `<th style="padding-bottom:14px;text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${extraW}">${extraLabel}</th>` : ''}
-      <th style="padding-bottom:14px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${qtyW}">${qtyLabel}</th>
-      <th style="padding-bottom:14px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${numW}">${priceLabel}</th>
-      <th style="padding-bottom:14px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${numW}">Total</th>
+      <th style="padding-bottom:8px;text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${descW}">${descLabel}</th>
+      ${hasExtra ? `<th style="padding-bottom:8px;text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${extraW}">${extraLabel}</th>` : ''}
+      <th style="padding-bottom:8px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${qtyW}">${qtyLabel}</th>
+      <th style="padding-bottom:8px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${numW}">${priceLabel}</th>
+      <th style="padding-bottom:8px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;width:${numW}">Total</th>
     </tr></thead>
     <tbody>${trs}</tbody>
   </table>
-  <div style="display:flex;justify-content:flex-end;margin-bottom:40px">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
     <div style="text-align:right">
       <div style="font-size:12px;color:#9CA3AF;margin-bottom:4px">Subtotal: ${formatCurrency(sub, cur)} &nbsp;|&nbsp; VAT ${inv.vatRate ?? 0}%: ${formatCurrency(vat, cur)}</div>
-      <div style="border-top:2px solid ${p};padding-top:14px;margin-top:8px">
-        <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#9CA3AF;margin-bottom:6px">Total Due</div>
-        <div style="font-size:38px;font-weight:200;color:${p};letter-spacing:-1px">${formatCurrency(total, cur)}</div>
+      <div style="border-top:2px solid ${p};padding-top:10px;margin-top:6px">
+        <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#9CA3AF;margin-bottom:4px">Total Due</div>
+        <div style="font-size:32px;font-weight:200;color:${p};letter-spacing:-1px">${formatCurrency(total, cur)}</div>
       </div>
     </div>
   </div>
-  ${notes ? `<p style="font-size:12px;color:#6B7280;border-top:1px solid #F1F5F9;padding-top:18px"><em><strong>Notes: </strong>${notes}</em></p>` : ''}
-  ${sig}${social}${payHtml}
+  ${notes ? `<p style="font-size:12px;color:#6B7280;border-top:1px solid #F1F5F9;padding-top:12px;margin:0 0 10px"><em><strong>Notes: </strong>${notes}</em></p>` : ''}
+  ${payHtml}${social}
 </div></body></html>`;
 }
 
@@ -352,62 +363,61 @@ function buildBold(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
 
   const trs = rows.map((r, i) => {
     if (r.type === 'section') {
-      return `<tr><td colspan="${colCount}" style="padding:10px 16px;font-size:13px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
+      return `<tr><td colspan="${colCount}" style="padding:5px 14px;font-size:12px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
     }
     return `
     <tr style="${i % 2 !== 0 ? `background:${lc}77` : ''}">
-      <td style="padding:12px 16px;font-size:13px">${r.desc}${r.notes ? `<div style="font-size:11px;color:#94A3B8;margin-top:3px;font-style:italic">${r.notes}</div>` : ''}</td>
-      ${hasExtra ? `<td style="padding:12px 16px;font-size:13px">${r.extra}</td>` : ''}
-      <td style="padding:12px 16px;text-align:center;font-size:13px">${r.qty}</td>
-      <td style="padding:12px 16px;text-align:right;font-size:13px">${r.price}</td>
-      <td style="padding:12px 16px;text-align:right;font-size:13px;font-weight:700">${r.total}</td>
+      <td style="padding:6px 14px;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      ${hasExtra ? `<td style="padding:6px 14px;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:6px 14px;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:6px 14px;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:6px 14px;text-align:right;font-size:12px;font-weight:700">${r.total}</td>
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
-  <div style="background:${p};padding:48px 52px 44px">
-    <div style="font-size:52px;font-weight:900;color:${ht};line-height:1;text-transform:uppercase;letter-spacing:-2px">${docTitle}</div>
-    <div style="color:${ht};opacity:0.75;font-size:16px;font-weight:300;margin-top:8px;letter-spacing:1px">${inv.number}</div>
-    ${logoSrc ? `<img src="${logoSrc}" style="height:52px;max-width:130px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-top:22px"/>` : ''}
+  <div style="background:${p};padding:28px 40px 24px">
+    <div style="font-size:40px;font-weight:900;color:${ht};line-height:1;text-transform:uppercase;letter-spacing:-1px">${docTitle}</div>
+    <div style="color:${ht};opacity:0.75;font-size:14px;font-weight:300;margin-top:6px;letter-spacing:1px">${inv.number}</div>
+    ${logoSrc ? `<img src="${logoSrc}" style="height:72px;max-width:180px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-top:14px"/>` : ''}
   </div>
-  <div style="background:${lc};padding:18px 52px;display:flex;gap:48px">
-    <div><div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:3px">Date</div><div style="font-weight:700;color:${dc}">${formatDate(inv.date)}</div></div>
-    ${inv.dueDate ? `<div><div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:3px">Due</div><div style="font-weight:700;color:${dc}">${formatDate(inv.dueDate)}</div></div>` : ''}
-    <div><div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:3px">Status</div><div style="font-weight:900;color:${p};text-transform:uppercase">${inv.status ?? 'draft'}</div></div>
+  <div style="background:${lc};padding:10px 40px;display:flex;gap:36px">
+    <div><div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:2px">Date</div><div style="font-weight:700;color:${dc};font-size:13px">${formatDate(inv.date)}</div></div>
+    ${inv.dueDate ? `<div><div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:2px">Due</div><div style="font-weight:700;color:${dc};font-size:13px">${formatDate(inv.dueDate)}</div></div>` : ''}
   </div>
-  <div style="padding:44px 52px">
-    <div style="display:flex;justify-content:space-between;margin-bottom:40px">
+  <div style="padding:24px 40px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:20px">
       <div>
-        <div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#94A3B8;margin-bottom:10px">From</div>
+        <div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#94A3B8;margin-bottom:7px">From</div>
         ${fromBlock(inv.from, p)}
       </div>
       <div style="text-align:right">
-        <div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#94A3B8;margin-bottom:10px">Billed To</div>
+        <div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#94A3B8;margin-bottom:7px">Billed To</div>
         ${toBlock(inv.to, p)}
       </div>
     </div>
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:28px">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:14px">
       <thead><tr style="background:${dc}">
-        <th style="padding:13px 16px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${descW}">${descLabel}</th>
-        ${hasExtra ? `<th style="padding:13px 16px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${extraW}">${extraLabel}</th>` : ''}
-        <th style="padding:13px 16px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${qtyW}">${qtyLabel}</th>
-        <th style="padding:13px 16px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">${priceLabel}</th>
-        <th style="padding:13px 16px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">Total</th>
+        <th style="padding:7px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${descW}">${descLabel}</th>
+        ${hasExtra ? `<th style="padding:7px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${extraW}">${extraLabel}</th>` : ''}
+        <th style="padding:7px 14px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${qtyW}">${qtyLabel}</th>
+        <th style="padding:7px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">${priceLabel}</th>
+        <th style="padding:7px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">Total</th>
       </tr></thead>
       <tbody>${trs}</tbody>
     </table>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:18px">
-      <table style="width:260px;border-collapse:collapse;font-size:13px">
-        <tr><td style="padding:6px 0;color:#64748B">Subtotal</td><td style="padding:6px 0;text-align:right">${formatCurrency(sub, cur)}</td></tr>
-        <tr><td style="padding:6px 0;color:#64748B">VAT (${inv.vatRate ?? 0}%)</td><td style="padding:6px 0;text-align:right">${formatCurrency(vat, cur)}</td></tr>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <table style="width:240px;border-collapse:collapse;font-size:12px">
+        <tr><td style="padding:4px 0;color:#64748B">Subtotal</td><td style="padding:4px 0;text-align:right">${formatCurrency(sub, cur)}</td></tr>
+        <tr><td style="padding:4px 0;color:#64748B">VAT (${inv.vatRate ?? 0}%)</td><td style="padding:4px 0;text-align:right">${formatCurrency(vat, cur)}</td></tr>
       </table>
     </div>
-    <div style="background:${p};border-radius:10px;padding:22px 28px;text-align:right;margin-bottom:28px">
+    <div style="background:${p};border-radius:10px;padding:16px 22px;text-align:right;margin-bottom:16px">
       <div style="color:${ht};opacity:0.75;font-size:10px;text-transform:uppercase;letter-spacing:2px">Total Amount Due</div>
-      <div style="color:${ht};font-size:36px;font-weight:900;letter-spacing:-1px;margin-top:4px">${formatCurrency(total, cur)}</div>
+      <div style="color:${ht};font-size:30px;font-weight:900;letter-spacing:-1px;margin-top:2px">${formatCurrency(total, cur)}</div>
     </div>
-    ${notes ? `<p style="font-size:12px;color:#64748B"><strong style="color:#1E293B">Notes: </strong>${notes}</p>` : ''}
-    ${sig}${social}${payHtml}
+    ${notes ? `<p style="font-size:12px;color:#64748B;margin:0 0 10px"><strong style="color:#1E293B">Notes: </strong>${notes}</p>` : ''}
+    ${payHtml}${social}
   </div>
 </body></html>`;
 }
@@ -428,101 +438,217 @@ function buildDark(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
 
   const trs = rows.map(r => {
     if (r.type === 'section') {
-      return `<tr><td colspan="${colCount}" style="padding:10px 0;border-bottom:1px solid #1E293B;font-size:13px;font-weight:700;color:${p}">${r.desc}</td></tr>`;
+      return `<tr><td colspan="${colCount}" style="padding:5px 0;border-bottom:1px solid #1E293B;font-size:12px;font-weight:700;color:${p}">${r.desc}</td></tr>`;
     }
     return `
     <tr>
-      <td style="padding:13px 0;border-bottom:1px solid #1E293B;font-size:13px;color:#CBD5E1">${r.desc}${r.notes ? `<div style="font-size:11px;color:#94A3B8;margin-top:3px;font-style:italic">${r.notes}</div>` : ''}</td>
-      ${hasExtra ? `<td style="padding:13px 0;border-bottom:1px solid #1E293B;font-size:13px;color:#CBD5E1">${r.extra}</td>` : ''}
-      <td style="padding:13px 0;border-bottom:1px solid #1E293B;text-align:center;font-size:13px;color:#CBD5E1">${r.qty}</td>
-      <td style="padding:13px 0;border-bottom:1px solid #1E293B;text-align:right;font-size:13px;color:#CBD5E1">${r.price}</td>
-      <td style="padding:13px 0;border-bottom:1px solid #1E293B;text-align:right;font-size:13px;font-weight:600;color:#F1F5F9">${r.total}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #1E293B;font-size:12px;color:#CBD5E1">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      ${hasExtra ? `<td style="padding:7px 0;border-bottom:1px solid #1E293B;font-size:12px;color:#CBD5E1">${r.extra}</td>` : ''}
+      <td style="padding:7px 0;border-bottom:1px solid #1E293B;text-align:center;font-size:12px;color:#CBD5E1">${r.qty}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #1E293B;text-align:right;font-size:12px;color:#CBD5E1">${r.price}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #1E293B;text-align:right;font-size:12px;font-weight:600;color:#F1F5F9">${r.total}</td>
     </tr>`;
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
-<body style="margin:0;padding:0;background:#0F172A;font-family:Helvetica,Arial,sans-serif;color:#CBD5E1">
-<div style="max-width:800px;margin:0 auto;padding:52px">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:32px;border-bottom:1px solid ${p}44;margin-bottom:40px">
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#CBD5E1">
+<div style="max-width:800px;margin:0 auto;padding:28px 32px;background:#0F172A">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:1px solid ${p}44;margin-bottom:18px">
     <div>
-      ${logoSrc ? `<img src="${logoSrc}" style="height:56px;max-width:140px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:16px"/>` : ''}
+      ${logoSrc ? `<img src="${logoSrc}" style="height:76px;max-width:190px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:10px"/>` : ''}
       <div style="font-size:10px;letter-spacing:4px;text-transform:uppercase;color:${p};font-weight:700">${docTitle}</div>
     </div>
     <div style="text-align:right">
-      <div style="font-size:22px;font-weight:700;color:#F1F5F9">${inv.number}</div>
-      <div style="color:#475569;font-size:13px;margin-top:6px">${formatDate(inv.date)}</div>
-      ${inv.dueDate ? `<div style="color:#475569;font-size:12px">Due: ${formatDate(inv.dueDate)}</div>` : ''}
-      <div style="margin-top:10px;display:inline-block;border:1px solid ${p};color:${p};border-radius:20px;padding:3px 14px;font-size:10px;font-weight:700;letter-spacing:1px">${(inv.status ?? 'DRAFT').toUpperCase()}</div>
+      <div style="font-size:20px;font-weight:700;color:#F1F5F9">${inv.number}</div>
+      <div style="color:#475569;font-size:12px;margin-top:4px">${formatDate(inv.date)}</div>
+      ${inv.dueDate ? `<div style="color:#475569;font-size:11px">Due: ${formatDate(inv.dueDate)}</div>` : ''}
     </div>
   </div>
-  <div style="display:flex;justify-content:space-between;margin-bottom:40px;gap:20px">
-    <div style="flex:1;background:#1E293B;border-radius:10px;padding:22px;border-left:3px solid ${p}">
-      <div style="font-size:9px;color:${p};text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:12px">From</div>
+  <div style="display:flex;justify-content:space-between;margin-bottom:18px;gap:14px">
+    <div style="flex:1;background:#1E293B;border-radius:10px;padding:14px 16px;border-left:3px solid ${p}">
+      <div style="font-size:9px;color:${p};text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:7px">From</div>
       <div style="color:#F1F5F9">${fromBlock(inv.from, p)}</div>
     </div>
-    <div style="flex:1;background:#1E293B;border-radius:10px;padding:22px;border-left:3px solid ${p}">
-      <div style="font-size:9px;color:${p};text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:12px">Billed To</div>
+    <div style="flex:1;background:#1E293B;border-radius:10px;padding:14px 16px;border-left:3px solid ${p}">
+      <div style="font-size:9px;color:${p};text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:7px">Billed To</div>
       <div style="color:#F1F5F9">${toBlock(inv.to, p)}</div>
     </div>
   </div>
-  <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:32px">
+  <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:16px">
     <thead><tr style="border-bottom:1px solid ${p}55">
-      <th style="padding-bottom:14px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${descW}">${descLabel}</th>
-      ${hasExtra ? `<th style="padding-bottom:14px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${extraW}">${extraLabel}</th>` : ''}
-      <th style="padding-bottom:14px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${qtyW}">${qtyLabel}</th>
-      <th style="padding-bottom:14px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${numW}">${priceLabel}</th>
-      <th style="padding-bottom:14px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${numW}">Total</th>
+      <th style="padding-bottom:8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${descW}">${descLabel}</th>
+      ${hasExtra ? `<th style="padding-bottom:8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${extraW}">${extraLabel}</th>` : ''}
+      <th style="padding-bottom:8px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${qtyW}">${qtyLabel}</th>
+      <th style="padding-bottom:8px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${numW}">${priceLabel}</th>
+      <th style="padding-bottom:8px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;width:${numW}">Total</th>
     </tr></thead>
     <tbody>${trs}</tbody>
   </table>
-  <div style="display:flex;justify-content:flex-end;margin-bottom:32px">
-    <div style="min-width:280px">
-      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:#64748B"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;color:#64748B;border-bottom:1px solid #1E293B"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:16px 0 4px;font-size:22px;font-weight:700;color:${p}"><span>TOTAL</span><span>${formatCurrency(total, cur)}</span></div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+    <div style="min-width:260px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748B"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;color:#64748B;border-bottom:1px solid #1E293B"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0 2px;font-size:20px;font-weight:700;color:${p}"><span>TOTAL</span><span>${formatCurrency(total, cur)}</span></div>
     </div>
   </div>
-  ${notes ? `<div style="background:#1E293B;border-radius:8px;padding:16px;margin-bottom:20px;font-size:12px;color:#94A3B8"><strong style="color:#CBD5E1">Notes: </strong>${notes}</div>` : ''}
-  ${sig}${social}${payHtml}
+  ${notes ? `<div style="background:#1E293B;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#94A3B8"><strong style="color:#CBD5E1">Notes: </strong>${notes}</div>` : ''}
+  ${payHtml}${social}
 </div></body></html>`;
+}
+
+// ─── Page-2 continuation ─────────────────────────────────────────────────────
+// Produces a second-page div (page-break-before:always) for invoices with >8
+// items. Matches the template style and repeats the sig/stamp footer.
+
+function buildPage2(rows2, tpl, colHeaders, cur, payHtml, social, style, invNumber) {
+  const { primaryColor: p, lightColor: lc, darkColor: dc } = tpl;
+  const ch = colHeaders ?? {};
+  const descLabel  = ch.desc || 'Description';
+  const qtyLabel   = ch.qty  || 'Qty';
+  const priceLabel = ch.price || 'Unit Price';
+  const extraLabel = ch.extraLabel || '';
+  const hasExtra   = !!extraLabel;
+  const colCount   = hasExtra ? 5 : 4;
+  const descW = hasExtra ? '35%' : '44%';
+  const extraW = '14%';
+  const qtyW  = hasExtra ? '7%' : '8%';
+  const numW  = hasExtra ? '22%' : '24%';
+
+  const isDark    = style === 'dark';
+  const isBold    = style === 'bold';
+  const isMinimal = style === 'minimal';
+  const isClassic = style === 'classic';
+
+  const bgColor    = isDark ? '#0F172A' : '#fff';
+  const textColor  = isDark ? '#CBD5E1' : '#1E293B';
+  const fontFamily = isClassic ? "Georgia,'Times New Roman',serif" : (isMinimal ? '-apple-system,Helvetica,Arial,sans-serif' : 'Helvetica,Arial,sans-serif');
+  const padding    = isMinimal ? '32px 40px' : isBold ? '24px 40px' : '22px 28px';
+
+  const trs = rows2.map((r, i) => {
+    if (r.type === 'section') {
+      const bg = (isDark || isMinimal) ? '' : `background:${lc}88;`;
+      const border = isDark ? 'border-bottom:1px solid #1E293B;' : isMinimal ? 'border-bottom:1px solid #F1F5F9;' : isClassic ? 'border-bottom:1px solid #E2E8F0;' : '';
+      return `<tr><td colspan="${colCount}" style="padding:5px ${isDark || isMinimal ? '0' : '12px'};${border}${bg}font-size:12px;font-weight:700;color:${p}">${r.desc}</td></tr>`;
+    }
+    const cellPad  = isDark || isMinimal ? '7px 0' : isBold ? '6px 14px' : '6px 12px';
+    const border   = isDark ? 'border-bottom:1px solid #1E293B;' : isMinimal ? 'border-bottom:1px solid #F1F5F9;' : isClassic ? 'border-bottom:1px solid #E2E8F0;' : '';
+    const rowBg    = isBold && i % 2 !== 0 ? `background:${lc}77` : (!isBold && !isDark && !isMinimal && i % 2 !== 0) ? `background:${lc}55` : '';
+    const cellClr  = isDark ? 'color:#CBD5E1;' : '';
+    const totalClr = isDark ? 'color:#F1F5F9;' : '';
+    return `
+    <tr style="${rowBg}">
+      <td style="padding:${cellPad};${border}font-size:12px;${cellClr}">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      ${hasExtra ? `<td style="padding:${cellPad};${border}font-size:12px;${cellClr}">${r.extra}</td>` : ''}
+      <td style="padding:${cellPad};${border}text-align:center;font-size:12px;${cellClr}">${r.qty}</td>
+      <td style="padding:${cellPad};${border}text-align:right;font-size:12px;${cellClr}">${r.price}</td>
+      <td style="padding:${cellPad};${border}text-align:right;font-size:12px;font-weight:600;${totalClr}">${r.total}</td>
+    </tr>`;
+  }).join('');
+
+  let thRowStyle, thStyle;
+  if (isDark) {
+    thRowStyle = `border-bottom:1px solid ${p}55`;
+    thStyle    = `padding-bottom:8px;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:${p};font-weight:700;`;
+  } else if (isMinimal) {
+    thRowStyle = 'border-bottom:1px solid #E5E7EB';
+    thStyle    = 'padding-bottom:8px;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#9CA3AF;font-weight:500;';
+  } else if (isBold) {
+    thRowStyle = `background:${dc}`;
+    thStyle    = `padding:7px 14px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;`;
+  } else if (isClassic) {
+    thRowStyle = `background:${p}`;
+    thStyle    = `padding:7px 12px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;`;
+  } else {
+    thRowStyle = `background:${lc}`;
+    thStyle    = `padding:7px 12px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${dc};`;
+  }
+
+  const contLabel  = `${escHtml(invNumber)} — Continued`;
+  const borderClr  = isDark ? `${p}33` : '#E5E7EB';
+  const contStyle  = `font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${p}`;
+
+  return `<div style="page-break-before:always;background:${bgColor};font-family:${fontFamily};color:${textColor};padding:${padding}">
+  <div style="margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid ${borderClr}">
+    <span style="${contStyle}">${contLabel}</span>
+  </div>
+  <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:20px">
+    <thead><tr style="${thRowStyle}">
+      <th style="${thStyle}text-align:left;width:${descW}">${descLabel}</th>
+      ${hasExtra ? `<th style="${thStyle}text-align:left;width:${extraW}">${extraLabel}</th>` : ''}
+      <th style="${thStyle}text-align:center;width:${qtyW}">${qtyLabel}</th>
+      <th style="${thStyle}text-align:right;width:${numW}">${priceLabel}</th>
+      <th style="${thStyle}text-align:right;width:${numW}">Total</th>
+    </tr></thead>
+    <tbody>${trs}</tbody>
+  </table>
+  ${payHtml}
+  ${social}
+</div>`;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function buildInvoiceHTML(invoice, paymentLink = '') {
+export async function buildInvoiceHTML(invoice, _paymentLink = '') {
   const tpl = getTemplate(invoice.templateId);
   const currency = invoice.currency ?? 'RWF';
   const { subtotal, vatAmount, total } = calcInvoice(invoice.items ?? [], invoice.vatRate);
-  const docTitle = invoice.type === 'proforma' ? 'PROFORMA INVOICE' : 'INVOICE';
+  const docTitle = invoice.docTitle || (invoice.type === 'proforma' ? 'PROFORMA INVOICE' : 'INVOICE');
 
-  // Load logo from file (authoritative source) — avoids AsyncStorage size limits
-  const logoSrc = await getBusinessLogo();
-  const rows = itemRows(invoice.items, currency);
+  const logoSrc = invoice.noLogo ? null : await getBusinessLogo();
+  const stampSrc = await getStampPhoto();
+  const ITEMS_PER_PAGE = 8;
+  const allRows = itemRows(invoice.items, currency);
+  const isMultiPage = allRows.length > ITEMS_PER_PAGE;
+  const rows  = isMultiPage ? allRows.slice(0, ITEMS_PER_PAGE) : allRows;
+  const rows2 = isMultiPage ? allRows.slice(ITEMS_PER_PAGE) : [];
   const style = tpl.style ?? 'modern';
-
-  const sig = invoice.signature ? `
-    <div style="margin-top:36px;padding-top:16px;border-top:1px solid rgba(128,128,128,0.2)">
-      <img src="${invoice.signature}" style="max-height:50px;max-width:160px;display:block"/>
-      <p style="font-size:9px;color:#94A3B8;text-transform:uppercase;letter-spacing:1.5px;margin-top:6px">Authorized Signature</p>
-    </div>` : '';
 
   const social = buildSocialFooter(invoice.from, tpl.primaryColor, style);
 
-  const payHtml = paymentLink ? `
-    <div style="margin-top:28px;padding:18px;border-radius:8px;background:${style === 'dark' ? '#1E293B' : '#F8FAFC'};border:1px solid ${tpl.primaryColor}33">
-      <p style="font-weight:700;color:${tpl.primaryColor};margin:0 0 8px">💳 Payment Instructions</p>
-      ${invoice.from?.momoNumber ? `<p style="font-size:12px;margin:3px 0;color:${style === 'dark' ? '#CBD5E1' : '#374151'}">MTN MoMo: <strong>${invoice.from.momoNumber}</strong></p>` : ''}
-      ${invoice.from?.momoCode   ? `<p style="font-size:12px;margin:3px 0;color:${style === 'dark' ? '#CBD5E1' : '#374151'}">MoMo Code: <strong>${invoice.from.momoCode}</strong></p>` : ''}
-      <p style="font-size:11px;color:#94A3B8;margin-top:10px;margin-bottom:4px">Tap to confirm payment:</p>
-      <a href="${paymentLink}" style="font-size:11px;color:${tpl.primaryColor};word-break:break-all">${paymentLink}</a>
-    </div>` : '';
+  const sigBlock = invoice.signature
+    ? `<div>
+        <img src="${invoice.signature}" style="max-height:50px;max-width:150px;display:block"/>
+        <p style="font-size:9px;color:#94A3B8;text-transform:uppercase;letter-spacing:1.5px;margin-top:6px">Authorized Signature</p>
+       </div>`
+    : '<div></div>';
+
+  const stampBlock = stampSrc
+    ? `<div style="text-align:center">
+        <img src="${stampSrc}" style="max-height:230px;max-width:250px;display:block;object-fit:contain"/>
+       </div>`
+    : '';
+
+  const payHtml = (invoice.signature || stampSrc)
+    ? `<div style="margin-top:18px;padding-top:10px;border-top:1px solid rgba(128,128,128,0.2);display:flex;justify-content:space-between;align-items:flex-end">
+        ${sigBlock}${stampBlock}
+       </div>`
+    : '';
+
+  const sig = '';
 
   const colHeaders = invoice.colHeaders ?? { desc: 'Description', extraLabel: '', qty: 'Qty', price: 'Unit Price' };
-  const args = [invoice, tpl, docTitle, logoSrc, rows, currency, subtotal, vatAmount, total, payHtml, invoice.notes ?? '', sig, social, colHeaders];
-  if (style === 'modern')  return buildModern(...args);
-  if (style === 'classic') return buildClassic(...args);
-  if (style === 'minimal') return buildMinimal(...args);
-  if (style === 'bold')    return buildBold(...args);
-  return buildDark(...args);
+  // Escape all user-controlled scalar fields before they enter HTML template strings.
+  const safeDocTitle = escHtml(docTitle);
+  const safeNotes    = escHtml(invoice.notes ?? '');
+  const safeNumber   = escHtml(invoice.number ?? '');
+  const safeStatus   = escHtml(invoice.status ?? 'draft');
+  const safeInv      = { ...invoice, number: safeNumber, status: safeStatus };
+  const args = [safeInv, tpl, safeDocTitle, logoSrc, rows, currency, subtotal, vatAmount, total, payHtml, safeNotes, sig, social, colHeaders];
+  let html;
+  if (style === 'modern')       html = buildModern(...args);
+  else if (style === 'classic') html = buildClassic(...args);
+  else if (style === 'minimal') html = buildMinimal(...args);
+  else if (style === 'bold')    html = buildBold(...args);
+  else                          html = buildDark(...args);
+
+  // Append page 2 continuation when there are more than ITEMS_PER_PAGE rows.
+  if (isMultiPage) {
+    const page2 = buildPage2(rows2, tpl, colHeaders, currency, payHtml, social, style, safeNumber);
+    html = html.replace('</body></html>', page2 + '</body></html>');
+  }
+
+  // no injected print CSS needed
+
+  return html;
 }
 
 export async function printInvoice(invoice) {
@@ -537,15 +663,14 @@ export async function shareInvoice(invoice, paymentLink = '') {
   const available = await Sharing.isAvailableAsync();
   if (!available) throw new Error('Sharing not available on this device');
 
-  const issuerName = safeName(invoice.from?.name);
   const clientName = safeName(invoice.to?.name);
-  const invNum = (invoice.number ?? '').replace(/[^a-zA-Z0-9]/g, '') || 'Invoice';
+  const invNum = (invoice.number ?? '').replace(/[^a-zA-Z0-9-]/g, '') || 'Invoice';
   const dateStr = (invoice.date ?? new Date().toISOString().slice(0, 10)).replace(/-/g, '');
-  const fileName = `${invNum}_${issuerName}_${clientName}_${dateStr}.pdf`;
+  const fileName = `${clientName}_${invNum}_${dateStr}.pdf`;
   const dialogTitle = `${invoice.number} — ${invoice.to?.name ?? ''}`;
-  // Copy into the SAME directory as the expo-print output — no cross-filesystem boundary
-  const sourceDir = uri.substring(0, uri.lastIndexOf('/') + 1);
-  const dest = sourceDir + fileName;
+  // Try to copy to a named file so the sharing dialog shows a readable filename.
+  // Use cacheDirectory — same filesystem as expo-print's temp output.
+  const dest = FileSystem.cacheDirectory + fileName;
   try {
     try { await FileSystem.deleteAsync(dest, { idempotent: true }); } catch {}
     await FileSystem.copyAsync({ from: uri, to: dest });
@@ -553,6 +678,7 @@ export async function shareInvoice(invoice, paymentLink = '') {
     try { await FileSystem.deleteAsync(dest, { idempotent: true }); } catch {}
     try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
   } catch {
+    // Fallback: share the original temp file
     await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle });
   }
 }

@@ -16,6 +16,7 @@ export async function scheduleRetentionNotification() {
       sound: true,
     },
     trigger: {
+      type: 'timeInterval',
       seconds: 60 * 60 * 24 * 3, // 3 days
       repeats: false,
     },

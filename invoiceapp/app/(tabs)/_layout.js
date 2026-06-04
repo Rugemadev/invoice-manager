@@ -19,10 +19,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{
-          title: t('tabs.dashboard'),
-          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="invoices"
@@ -36,6 +33,13 @@ export default function TabLayout() {
         options={{
           title: t('tabs.clients'),
           tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="reports"
+        options={{
+          title: t('tabs.reports'),
+          tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen

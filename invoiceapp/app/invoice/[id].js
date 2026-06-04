@@ -7,12 +7,11 @@ import { useLocalSearchParams, useRouter, Stack, useFocusEffect } from 'expo-rou
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
-import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/colors';
 import { Spacing, Radius, FontSize, Shadow } from '../../constants/theme';
 import { getTemplate } from '../../constants/templates';
-import { getInvoices, saveInvoice, deleteInvoice, archiveInvoice, getSettings } from '../../utils/storage';
+import { getInvoices, saveInvoice, deleteInvoice, archiveInvoice, getSettings, getBusinessLogo } from '../../utils/storage';
 import { formatCurrency, formatDate, shareInvoice, printInvoice } from '../../utils/invoice';
 import Confetti from '../../components/Confetti';
 import { playChime } from '../../utils/sound';
@@ -32,7 +31,75 @@ const PAYMENT_METHODS = [
   { key: 'cash',   label: 'Cash Payment',         icon: 'cash-outline',            color: '#059669', bg: '#ECFDF5', text: '#059669' },
 ];
 
-// step: 'select' | 'waiting' | 'success' | 'failed' | 'timeout'
+function ReminderModal({ visible, onClose, clientName }) {
+  const tomorrow = new Date(Date.now() + 86400000);
+  const [date, setDate] = useState(tomorrow.toISOString().split('T')[0]);
+  const [time, setTime] = useState('09:00');
+  const [loading, setLoading] = useState(false);
+
+  const handleSet = async () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { Alert.alert('', 'Enter date as YYYY-MM-DD'); return; }
+    if (!/^\d{2}:\d{2}$/.test(time))        { Alert.alert('', 'Enter time as HH:MM (24h)'); return; }
+    const dateTime = new Date(`${date}T${time}:00`);
+    if (isNaN(dateTime.getTime()))  { Alert.alert('', 'Invalid date or time.'); return; }
+    if (dateTime <= new Date())     { Alert.alert('', 'Please choose a future date and time.'); return; }
+    setLoading(true);
+    try {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') { Alert.alert('', 'Please enable notifications in device settings.'); setLoading(false); return; }
+      const secondsFromNow = Math.floor((dateTime.getTime() - Date.now()) / 1000);
+      await Notifications.scheduleNotificationAsync({
+        content: { title: 'Invoice Reminder', body: `Follow up on payment from ${clientName}`, sound: true },
+        trigger: { type: 'timeInterval', seconds: secondsFromNow },
+      });
+      Alert.alert('✓ Reminder set', `You will be notified on ${date} at ${time}`);
+      onClose();
+    } catch (e) {
+      Alert.alert('Error', e.message ?? 'Could not set reminder.');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={reminderModal.container}>
+        <View style={reminderModal.handle} />
+        <Text style={reminderModal.title}>Set Reminder</Text>
+        <Text style={reminderModal.sub}>Pick a date and time to be notified to follow up on this payment.</Text>
+        <View style={reminderModal.field}>
+          <Text style={reminderModal.label}>Date</Text>
+          <TextInput
+            style={reminderModal.input}
+            value={date}
+            onChangeText={setDate}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={Colors.textMuted}
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+        <View style={reminderModal.field}>
+          <Text style={reminderModal.label}>Time (24h format)</Text>
+          <TextInput
+            style={reminderModal.input}
+            value={time}
+            onChangeText={setTime}
+            placeholder="HH:MM"
+            placeholderTextColor={Colors.textMuted}
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+        <TouchableOpacity style={[reminderModal.setBtn, loading && { opacity: 0.5 }]} onPress={handleSet} disabled={loading} activeOpacity={0.85}>
+          <Ionicons name="alarm-outline" size={20} color="#fff" />
+          <Text style={reminderModal.setBtnTxt}>{loading ? 'Setting…' : 'Set Reminder'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={reminderModal.cancelBtn} onPress={onClose}>
+          <Text style={reminderModal.cancelTxt}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
 function PaymentModal({ visible, invoice, settings, onClose, onPaid }) {
   const { t } = useTranslation();
   const [method, setMethod]   = useState(null);
@@ -40,7 +107,6 @@ function PaymentModal({ visible, invoice, settings, onClose, onPaid }) {
   const [step, setStep]       = useState('select');
   const [attempt, setAttempt] = useState(0);
 
-  // Reset when modal opens/closes
   useEffect(() => {
     if (visible) {
       setMethod(null);
@@ -78,7 +144,6 @@ function PaymentModal({ visible, invoice, settings, onClose, onPaid }) {
         setStep('select');
       }
     } else {
-      // Card — placeholder (integrate Flutterwave/Stripe later)
       setStep('waiting');
       await new Promise(r => setTimeout(r, 2000));
       setStep('success');
@@ -94,7 +159,7 @@ function PaymentModal({ visible, invoice, settings, onClose, onPaid }) {
           {method === 'momo' ? 'Waiting for client to approve…' : 'Processing…'}
         </Text>
         {method === 'momo' && (
-          <Text style={modal.waitSub}>Client will see a MoMo prompt on their phone.{'\n'}Check {attempt > 0 ? `(${attempt}/12)` : ''}</Text>
+          <Text style={modal.waitSub}>Client will see a MoMo prompt on their phone.{'\n'}{attempt > 0 ? `Check (${attempt}/12)` : ''}</Text>
         )}
       </View>
     );
@@ -119,7 +184,6 @@ function PaymentModal({ visible, invoice, settings, onClose, onPaid }) {
       </View>
     );
 
-    // 'select' step
     return (
       <>
         <TouchableOpacity style={[modal.method, method === 'momo' && modal.active]} onPress={() => setMethod('momo')} activeOpacity={0.7}>
@@ -193,22 +257,24 @@ export default function InvoiceDetail() {
   const router = useRouter();
   const [invoice, setInvoice] = useState(null);
   const [settings, setSettings] = useState({});
+  const [logoUri, setLogoUri] = useState(null);
   const [showPayment, setShowPayment] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showPaidMethodPicker, setShowPaidMethodPicker] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showReminder, setShowReminder] = useState(false);
   const hasPlayedRef = useRef(false);
 
   const load = useCallback(async () => {
-    const [invoices, s] = await Promise.all([getInvoices(), getSettings()]);
+    const [invoices, s, logoData] = await Promise.all([getInvoices(), getSettings(), getBusinessLogo()]);
     const inv = invoices.find(i => i.id === id);
     setInvoice(inv ?? null);
     setSettings(s);
+    setLogoUri(logoData);
   }, [id]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Trigger confetti + chime on first mount when new or just paid
   useEffect(() => {
     if ((isNew === '1' || justPaid === '1') && !hasPlayedRef.current) {
       hasPlayedRef.current = true;
@@ -227,14 +293,12 @@ export default function InvoiceDetail() {
   const currency = invoice.currency ?? 'RWF';
   const isProforma = invoice.type === 'proforma';
 
-  const paymentLink = Linking.createURL('/payment-confirmed', { queryParams: { id: invoice.id } });
-
   const doShare = async () => {
     setShowPreview(false);
     await new Promise(r => setTimeout(r, 400));
     try {
       await saveInvoice({ ...invoice, status: invoice.status === 'draft' ? 'sent' : invoice.status });
-      await shareInvoice(invoice, paymentLink);
+      await shareInvoice(invoice);
       await load();
     } catch (e) {
       Alert.alert('', 'Could not share. Please try again.');
@@ -271,25 +335,28 @@ export default function InvoiceDetail() {
     router.replace('/(tabs)/invoices');
   };
 
-  const setReminder = async () => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('', 'Please enable notifications in settings.'); return; }
-    await Notifications.scheduleNotificationAsync({
-      content: { title: t('notifications.reminderTitle'), body: t('notifications.reminderBody', { client: invoice.to?.name }), sound: true },
-      trigger: { seconds: 60 },
-    });
-    Alert.alert('', t('invoice.reminderSet'));
-  };
+  const docTitle = invoice.docTitle || (isProforma ? 'PROFORMA INVOICE' : 'INVOICE');
 
-  const docTitle = isProforma ? 'PROFORMA INVOICE' : 'INVOICE';
+  const headerTextColor = tpl?.headerText ?? '#fff';
 
   return (
     <>
       <Stack.Screen options={{
         title: invoice.number,
         headerStyle: { backgroundColor: primary },
-        headerTintColor: tpl?.headerText ?? '#fff',
+        headerTintColor: headerTextColor,
         headerBackTitle: '',
+        headerRight: () => (
+          <TouchableOpacity
+            onPress={() => router.push(
+              `/invoice/create?editId=${invoice.id}&templateId=${invoice.templateId}&type=${invoice.type}&docTitle=${encodeURIComponent(invoice.docTitle ?? (isProforma ? 'Proforma Invoice' : 'Invoice'))}`
+            )}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ marginRight: 4 }}
+          >
+            <Ionicons name="create-outline" size={22} color={headerTextColor} />
+          </TouchableOpacity>
+        ),
       }} />
 
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -297,9 +364,9 @@ export default function InvoiceDetail() {
         {/* Header card */}
         <View style={[styles.card, Shadow.sm, { borderTopColor: primary, borderTopWidth: 3 }]}>
           <View style={styles.cardTop}>
-            {settings.logo ? <Image source={{ uri: settings.logo }} style={styles.logo} /> : null}
+            {logoUri ? <Image source={{ uri: logoUri }} style={styles.logo} /> : null}
             <View style={{ flex: 1 }}>
-              <Text style={[styles.docType, { color: primary }]}>{docTitle}</Text>
+              <Text style={[styles.docType, { color: primary }]}>{docTitle.toUpperCase()}</Text>
               <Text style={styles.number}>{invoice.number}</Text>
               <Text style={styles.meta}>{formatDate(invoice.createdAt)}</Text>
               {invoice.dueDate ? <Text style={styles.meta}>Due: {formatDate(invoice.dueDate)}</Text> : null}
@@ -397,7 +464,7 @@ export default function InvoiceDetail() {
             <Ionicons name="print-outline" size={20} color={primary} />
             <Text style={[styles.actionTxt, { color: primary }]}>{t('invoice.print')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.accentLight }]} onPress={setReminder} activeOpacity={0.7}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.accentLight }]} onPress={() => setShowReminder(true)} activeOpacity={0.7}>
             <Ionicons name="alarm-outline" size={20} color={Colors.accent} />
             <Text style={[styles.actionTxt, { color: Colors.accent }]}>{t('invoice.remind')}</Text>
           </TouchableOpacity>
@@ -407,7 +474,7 @@ export default function InvoiceDetail() {
           <>
             <TouchableOpacity style={[styles.payBtn, { backgroundColor: Colors.mtn }]} onPress={() => setShowPayment(true)} activeOpacity={0.85}>
               <Ionicons name="phone-portrait-outline" size={20} color={Colors.text} />
-              <Text style={[styles.payBtnTxt, { color: Colors.text }]} adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6}>{t('invoice.receivePayment')}</Text>
+              <Text style={styles.payBtnTxt}>{t('invoice.receivePayment')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.paidBtn, { borderColor: Colors.accent }]} onPress={() => setShowPaidMethodPicker(true)} activeOpacity={0.85}>
               <Ionicons name="checkmark-circle-outline" size={20} color={Colors.accent} />
@@ -467,16 +534,14 @@ export default function InvoiceDetail() {
           <View style={previewModal.handle} />
           <Text style={previewModal.heading}>Invoice Preview</Text>
 
-          {/* Header card */}
           <View style={[previewModal.card, { borderTopColor: primary, borderTopWidth: 3 }]}>
-            {settings.logo ? <Image source={{ uri: settings.logo }} style={previewModal.logo} resizeMode="contain" /> : null}
-            <Text style={[previewModal.docType, { color: primary }]}>{isProforma ? 'PROFORMA INVOICE' : 'INVOICE'}</Text>
+            {logoUri ? <Image source={{ uri: logoUri }} style={previewModal.logo} resizeMode="contain" /> : null}
+            <Text style={[previewModal.docType, { color: primary }]}>{docTitle.toUpperCase()}</Text>
             <Text style={previewModal.invNumber}>{invoice.number}</Text>
             <Text style={previewModal.meta}>Date: {formatDate(invoice.date)}</Text>
             {invoice.dueDate ? <Text style={previewModal.meta}>Due: {formatDate(invoice.dueDate)}</Text> : null}
           </View>
 
-          {/* From / To */}
           <View style={[previewModal.card, previewModal.row]}>
             <View style={{ flex: 1 }}>
               <Text style={[previewModal.partyLabel, { color: primary }]}>FROM</Text>
@@ -492,7 +557,6 @@ export default function InvoiceDetail() {
             </View>
           </View>
 
-          {/* Items */}
           <View style={previewModal.card}>
             {invoice.items?.map((item, i) => item.type === 'section' ? (
               <Text key={item.id} style={[previewModal.sectionHead, { color: primary }]}>{item.description}</Text>
@@ -512,7 +576,6 @@ export default function InvoiceDetail() {
             </View>
           </View>
 
-          {/* Action buttons */}
           <TouchableOpacity style={[previewModal.shareBtn, { backgroundColor: primary }]} onPress={doShare} activeOpacity={0.85}>
             <Ionicons name="share-outline" size={20} color="#fff" />
             <Text style={previewModal.shareBtnTxt}>Share PDF</Text>
@@ -524,8 +587,13 @@ export default function InvoiceDetail() {
         </ScrollView>
       </Modal>
 
-      {/* Confetti AFTER ScrollView so it renders on top */}
       <Confetti visible={showConfetti} onDone={() => setShowConfetti(false)} />
+
+      <ReminderModal
+        visible={showReminder}
+        onClose={() => setShowReminder(false)}
+        clientName={invoice.to?.name ?? 'client'}
+      />
 
       <PaymentModal
         visible={showPayment}
@@ -572,11 +640,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: Spacing.sm },
   actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: Radius.md, paddingVertical: Spacing.sm },
   actionTxt: { fontSize: FontSize.xs, fontWeight: '600' },
-  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderWidth: 1.5, borderRadius: Radius.md, padding: Spacing.md, borderStyle: 'dashed' },
-  linkTitle: { fontSize: FontSize.sm, fontWeight: '700' },
-  linkSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  payBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: Radius.md, paddingVertical: Spacing.md, ...Shadow.sm },
-  payBtnTxt: { fontSize: FontSize.lg, fontWeight: '700' },
+  payBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: Radius.md, paddingVertical: Spacing.md, paddingHorizontal: Spacing.md, ...Shadow.sm },
+  payBtnTxt: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text, flexShrink: 1, textAlign: 'center' },
   paidBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderRadius: Radius.md, paddingVertical: Spacing.md },
   paidBtnTxt: { fontSize: FontSize.lg, fontWeight: '600' },
   paidBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: Colors.accentLight, borderRadius: Radius.md, paddingVertical: Spacing.md },
@@ -647,7 +712,6 @@ const modal = StyleSheet.create({
   payBtnTxt:  { fontSize: FontSize.lg, fontWeight: '700', color: '#fff' },
   cancelBtn:  { alignItems: 'center', paddingVertical: Spacing.md },
   cancelTxt:  { fontSize: FontSize.md, color: Colors.textMuted },
-  // Status screens
   centered:    { alignItems: 'center', paddingVertical: Spacing.xl, gap: Spacing.md },
   waitTitle:   { fontSize: FontSize.lg, fontWeight: '700', color: Colors.text, textAlign: 'center', marginTop: Spacing.sm },
   waitSub:     { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
@@ -655,4 +719,18 @@ const modal = StyleSheet.create({
   failedTxt:   { fontSize: FontSize.xl, fontWeight: '700', color: Colors.danger, marginTop: Spacing.sm, textAlign: 'center' },
   retryBtn:    { backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.sm, marginTop: Spacing.sm },
   retryTxt:    { fontSize: FontSize.md, fontWeight: '700', color: '#fff' },
+});
+
+const reminderModal = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.surface, padding: Spacing.lg, paddingTop: Spacing.md },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.lg },
+  title: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.text, marginBottom: 6 },
+  sub: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.lg, lineHeight: 20 },
+  field: { marginBottom: Spacing.md },
+  label: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  input: { backgroundColor: Colors.background, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, fontSize: FontSize.lg, color: Colors.text },
+  setBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.accent, borderRadius: Radius.md, paddingVertical: Spacing.md, marginTop: Spacing.md },
+  setBtnTxt: { fontSize: FontSize.lg, fontWeight: '700', color: '#fff' },
+  cancelBtn: { alignItems: 'center', paddingVertical: Spacing.md, marginTop: Spacing.sm },
+  cancelTxt: { fontSize: FontSize.md, color: Colors.textMuted },
 });
