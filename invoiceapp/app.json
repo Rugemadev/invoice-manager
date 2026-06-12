@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "invoiceapp",
-    "slug": "invoiceapp",
-    "scheme": "invoiceapp",
+    "name": "Bilvo",
+    "slug": "bilvo",
+    "description": "Your Business. Your Invoice. Anywhere.",
+    "scheme": "bilvo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -11,19 +12,22 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#2563EB"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rugema.invoicemanager"
+      "bundleIdentifier": "com.rugema.bilvo",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2563EB"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.rugema.invoicemanager"
+      "package": "com.rugema.bilvo",
+      "versionCode": 1,
+      "permissions": []
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,6 +42,11 @@
           "color": "#2563EB"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    }
   }
 }

@@ -62,7 +62,7 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setSocialLoading('google');
     try {
-      const redirectTo = makeRedirectUri({ scheme: 'invoiceapp', path: 'auth-callback' });
+      const redirectTo = makeRedirectUri({ scheme: 'bilvo', path: 'auth-callback' });
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo, skipBrowserRedirect: true },

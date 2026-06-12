@@ -56,7 +56,7 @@ export function onAuthStateChange(callback) {
 
 export async function resetPasswordForEmail(email) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: 'invoiceapp://reset-password',
+    redirectTo: 'bilvo://reset-password',
   });
   if (error) throw error;
 }
