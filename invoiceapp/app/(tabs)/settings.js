@@ -254,8 +254,6 @@ export default function Settings() {
                 { label: 'TIN Number', field: 'tin', placeholder: '123456789' },
                 { label: 'Phone', field: 'phone', placeholder: '+250 788 000 000', keyboard: 'phone-pad' },
                 { label: 'Business Email', field: 'businessEmail', placeholder: 'info@business.com', keyboard: 'email-address' },
-                { label: 'MoMo Number', field: 'momoNumber', placeholder: '0788 000 000', keyboard: 'phone-pad' },
-                { label: 'MoMo Code', field: 'momoCode', placeholder: 'e.g. 182' },
                 { label: 'Instagram', field: 'instagram', placeholder: '@yourbusiness' },
                 { label: 'Website', field: 'website', placeholder: 'www.yourbusiness.com' },
               ].map(({ label, field, placeholder, multiline, keyboard }) => (
@@ -307,8 +305,6 @@ export default function Settings() {
                 { label: 'TIN Number', field: 'tin', placeholder: '123456789' },
                 { label: 'Phone', field: 'phone', placeholder: '+250 788 000 000', keyboard: 'phone-pad' },
                 { label: 'Business Email', field: 'businessEmail', placeholder: 'info@business.com', keyboard: 'email-address' },
-                { label: 'MoMo Number', field: 'momoNumber', placeholder: '0788 000 000', keyboard: 'phone-pad' },
-                { label: 'MoMo Code', field: 'momoCode', placeholder: 'e.g. 182' },
                 { label: 'Instagram', field: 'instagram', placeholder: '@yourbusiness' },
                 { label: 'Website', field: 'website', placeholder: 'www.yourbusiness.com' },
               ].map(({ label, field, placeholder, multiline, keyboard }) => (
@@ -426,13 +422,6 @@ export default function Settings() {
         </View>
       </View>
 
-      {/* Payment */}
-      <SectionTitle title={t('settings.payment')} />
-      <View style={[styles.card, Shadow.sm]}>
-        <Field label={t('settings.momoNumber')} value={form.momoNumber ?? ''} onChangeText={(v) => update('momoNumber', v)} keyboardType="phone-pad" />
-        <Field label={t('settings.momoCode')} value={form.momoCode ?? ''} onChangeText={(v) => update('momoCode', v)} />
-      </View>
-
       {/* Notifications */}
       <SectionTitle title={t('settings.notifications')} />
       <View style={[styles.card, Shadow.sm]}>
@@ -443,6 +432,21 @@ export default function Settings() {
           </View>
           <Switch value={form.notificationsEnabled ?? true} onValueChange={handleNotificationToggle} trackColor={{ true: Colors.primary }} />
         </View>
+      </View>
+
+      {/* Saved Notes */}
+      <SectionTitle title="Saved Notes" />
+      <View style={[styles.card, Shadow.sm, { gap: 0 }]}>
+        <TouchableOpacity style={styles.navRow} onPress={() => router.push('/saved-notes')} activeOpacity={0.7}>
+          <View style={styles.navRowLeft}>
+            <Ionicons name="document-text-outline" size={22} color={Colors.primary} />
+            <View>
+              <Text style={styles.navRowTitle}>Saved Notes</Text>
+              <Text style={styles.navRowSub}>Reusable notes for payment info, terms, etc.</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+        </TouchableOpacity>
       </View>
 
       {/* Signature & Stamp */}

@@ -83,20 +83,41 @@ function buildSocialFooter(from, primaryColor, style) {
     web  ? `<div style="display:flex;align-items:center;gap:5px">${WEB_ICON(primaryColor)}<span style="font-size:11px;color:${textColor}">${escHtml(web)}</span></div>` : '',
   ].filter(Boolean).join('');
 
-  return `<div style="margin-top:12px;padding-top:10px;border-top:1px solid ${borderColor};display:flex;gap:20px;flex-wrap:wrap;align-items:center">${items}</div>`;
+  return `<div style="margin-top:6px;padding-top:6px;border-top:1px solid ${borderColor};display:flex;gap:20px;flex-wrap:wrap;align-items:center">${items}</div>`;
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function itemRows(items, currency) {
+function itemRows(items, currency, itemImages) {
+  const imgMap = itemImages || {};
   return (items ?? []).map(item => {
     if (item.type === 'section') {
       return { type: 'section', desc: escHtml(item.description), extra: '', qty: '', price: '', total: '' };
     }
     const lineTotal = Math.round((parseFloat(item.qty) || 0) * (parseFloat(item.unitPrice) || 0));
     const qty = parseFloat(item.qty) % 1 === 0 ? parseInt(item.qty, 10) : parseFloat(item.qty);
-    return { type: 'item', desc: escHtml(item.description), notes: escHtml(item.notes ?? ''), extra: escHtml(item.extra ?? ''), qty, price: formatCurrency(item.unitPrice, currency), total: formatCurrency(lineTotal, currency) };
+    return {
+      type: 'item',
+      desc: escHtml(item.description),
+      notes: escHtml(item.notes ?? ''),
+      extra: escHtml(item.extra ?? ''),
+      qty, price: formatCurrency(item.unitPrice, currency), total: formatCurrency(lineTotal, currency),
+      imgSrc: imgMap[item.id] || null,
+    };
   });
+}
+
+// Renders description cell content, optionally with a product photo thumbnail.
+function buildDescContent(r, notesColor, notesFontSize) {
+  const nc = notesColor || '#475569';
+  const nfs = notesFontSize || '11px';
+  const noteHtml = r.notes
+    ? `<div style="font-size:${nfs};color:${nc};margin-top:2px;font-style:italic">${r.notes}</div>`
+    : '';
+  if (r.imgSrc) {
+    return `<div style="display:flex;align-items:flex-start;gap:8px"><img src="${r.imgSrc}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0;margin-top:1px"/><div>${r.desc}${noteHtml}</div></div>`;
+  }
+  return `${r.desc}${noteHtml}`;
 }
 
 function fromBlock(from, color) {
@@ -138,7 +159,7 @@ function buildModern(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, pa
     }
     return `
     <tr style="background:${i % 2 === 0 ? '#fff' : lc + '55'}">
-      <td style="padding:6px 12px;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      <td style="padding:6px 12px;font-size:12px">${buildDescContent(r, '#475569')}</td>
       ${hasExtra ? `<td style="padding:6px 12px;font-size:12px">${r.extra}</td>` : ''}
       <td style="padding:6px 12px;text-align:center;font-size:12px">${r.qty}</td>
       <td style="padding:6px 12px;text-align:right;font-size:12px">${r.price}</td>
@@ -147,7 +168,7 @@ function buildModern(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, pa
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
-<div style="max-width:800px;margin:0 auto;padding:22px 28px;background:#F1F5F9">
+<div style="max-width:800px;margin:0 auto;padding:10px 24px;background:#F1F5F9">
   <div style="background:${p};border-radius:16px;padding:20px 26px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-start">
     <div>
       ${logoSrc ? `<img src="${logoSrc}" style="height:80px;max-width:200px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:10px"/>` : ''}
@@ -213,7 +234,7 @@ function buildClassic(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, p
     }
     return `
     <tr style="${i % 2 !== 0 ? `background:${lc}44` : ''}">
-      <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;font-size:12px">${buildDescContent(r, '#475569')}</td>
       ${hasExtra ? `<td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;font-size:12px">${r.extra}</td>` : ''}
       <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;text-align:center;font-size:12px">${r.qty}</td>
       <td style="padding:6px 12px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:12px">${r.price}</td>
@@ -223,7 +244,7 @@ function buildClassic(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, p
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:Georgia,'Times New Roman',serif;color:#1a1a1a">
   <div style="height:8px;background:${p}"></div>
-  <div style="max-width:800px;margin:0 auto;padding:22px 28px">
+  <div style="max-width:800px;margin:0 auto;padding:10px 24px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:2px solid ${p};margin-bottom:14px">
       <div>
         ${logoSrc ? `<img src="${logoSrc}" style="height:80px;max-width:200px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:10px"/>` : ''}
@@ -292,7 +313,7 @@ function buildMinimal(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, p
     }
     return `
     <tr>
-      <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">${buildDescContent(r, '#475569')}</td>
       ${hasExtra ? `<td style="padding:7px 0;border-bottom:1px solid #F1F5F9;font-size:12px">${r.extra}</td>` : ''}
       <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;text-align:center;font-size:12px">${r.qty}</td>
       <td style="padding:7px 0;border-bottom:1px solid #F1F5F9;text-align:right;font-size:12px">${r.price}</td>
@@ -301,7 +322,7 @@ function buildMinimal(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, p
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#111">
-<div style="max-width:720px;margin:0 auto;padding:32px 40px">
+<div style="max-width:720px;margin:0 auto;padding:12px 32px">
   <div style="display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:16px;border-bottom:1px solid #E5E7EB;margin-bottom:24px">
     <div>
       ${logoSrc ? `<img src="${logoSrc}" style="height:76px;max-width:190px;object-fit:contain;object-position:left;display:block;border-radius:8px;margin-bottom:12px"/>` : ''}
@@ -367,7 +388,7 @@ function buildBold(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
     }
     return `
     <tr style="${i % 2 !== 0 ? `background:${lc}77` : ''}">
-      <td style="padding:6px 14px;font-size:12px">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      <td style="padding:6px 14px;font-size:12px">${buildDescContent(r, '#475569')}</td>
       ${hasExtra ? `<td style="padding:6px 14px;font-size:12px">${r.extra}</td>` : ''}
       <td style="padding:6px 14px;text-align:center;font-size:12px">${r.qty}</td>
       <td style="padding:6px 14px;text-align:right;font-size:12px">${r.price}</td>
@@ -376,7 +397,7 @@ function buildBold(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
-  <div style="background:${p};padding:28px 40px 24px">
+  <div style="background:${p};padding:14px 40px 12px">
     <div style="font-size:40px;font-weight:900;color:${ht};line-height:1;text-transform:uppercase;letter-spacing:-1px">${docTitle}</div>
     <div style="color:${ht};opacity:0.75;font-size:14px;font-weight:300;margin-top:6px;letter-spacing:1px">${inv.number}</div>
     ${logoSrc ? `<img src="${logoSrc}" style="height:72px;max-width:180px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-top:14px"/>` : ''}
@@ -385,7 +406,7 @@ function buildBold(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
     <div><div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:2px">Date</div><div style="font-weight:700;color:${dc};font-size:13px">${formatDate(inv.date)}</div></div>
     ${inv.dueDate ? `<div><div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:2px">Due</div><div style="font-weight:700;color:${dc};font-size:13px">${formatDate(inv.dueDate)}</div></div>` : ''}
   </div>
-  <div style="padding:24px 40px">
+  <div style="padding:10px 40px">
     <div style="display:flex;justify-content:space-between;margin-bottom:20px">
       <div>
         <div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#94A3B8;margin-bottom:7px">From</div>
@@ -442,7 +463,7 @@ function buildDark(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
     }
     return `
     <tr>
-      <td style="padding:7px 0;border-bottom:1px solid #1E293B;font-size:12px;color:#CBD5E1">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      <td style="padding:7px 0;border-bottom:1px solid #1E293B;font-size:12px;color:#CBD5E1">${buildDescContent(r, '#94A3B8')}</td>
       ${hasExtra ? `<td style="padding:7px 0;border-bottom:1px solid #1E293B;font-size:12px;color:#CBD5E1">${r.extra}</td>` : ''}
       <td style="padding:7px 0;border-bottom:1px solid #1E293B;text-align:center;font-size:12px;color:#CBD5E1">${r.qty}</td>
       <td style="padding:7px 0;border-bottom:1px solid #1E293B;text-align:right;font-size:12px;color:#CBD5E1">${r.price}</td>
@@ -451,7 +472,7 @@ function buildDark(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
   }).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
 <body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#CBD5E1">
-<div style="max-width:800px;margin:0 auto;padding:28px 32px;background:#0F172A">
+<div style="max-width:800px;margin:0 auto;padding:10px 24px;background:#0F172A">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:1px solid ${p}44;margin-bottom:18px">
     <div>
       ${logoSrc ? `<img src="${logoSrc}" style="height:76px;max-width:190px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:10px"/>` : ''}
@@ -495,6 +516,474 @@ function buildDark(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payH
 </div></body></html>`;
 }
 
+// ─── New layout builders (wave, geometric, sidebar, corporate, stripe, executive) ─
+
+function buildWave(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payHtml, notes, sig, social, colHeaders) {
+  const { primaryColor: p, lightColor: lc, darkColor: dc } = tpl;
+  const ch = colHeaders ?? {};
+  const descLabel  = ch.desc || 'Description';
+  const qtyLabel   = ch.qty  || 'Qty';
+  const priceLabel = ch.price || 'Unit Price';
+  const extraLabel = ch.extraLabel || '';
+  const hasExtra   = !!extraLabel;
+  const colCount   = hasExtra ? 5 : 4;
+  const descW = hasExtra ? '35%' : '44%'; const extraW = '14%';
+  const qtyW  = hasExtra ? '7%'  : '8%';  const numW  = hasExtra ? '22%' : '24%';
+  const trs = rows.map((r, i) => {
+    if (r.type === 'section') return `<tr><td colspan="${colCount}" style="padding:5px 14px;font-size:12px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
+    return `<tr style="background:${i % 2 !== 0 ? lc + '44' : '#fff'}">
+      <td style="padding:7px 14px;font-size:12px">${buildDescContent(r, '#64748B')}</td>
+      ${hasExtra ? `<td style="padding:7px 14px;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:7px 14px;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:7px 14px;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:7px 14px;text-align:right;font-size:12px;font-weight:600">${r.total}</td>
+    </tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+<div style="max-width:800px;margin:0 auto;background:#fff;overflow:hidden">
+  <div style="background:${p};padding:24px 28px 8px;position:relative">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:36px">
+      <div>
+        ${logoSrc ? `<img src="${logoSrc}" style="height:72px;max-width:180px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:10px"/>` : ''}
+        <div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-0.5px">${docTitle}</div>
+      </div>
+      <div style="text-align:right;color:#fff">
+        <div style="font-size:18px;font-weight:700">${inv.number}</div>
+        <div style="opacity:0.8;font-size:12px;margin-top:4px">${formatDate(inv.date)}</div>
+        ${inv.dueDate ? `<div style="opacity:0.7;font-size:11px">Due ${formatDate(inv.dueDate)}</div>` : ''}
+      </div>
+    </div>
+    <svg viewBox="0 0 800 56" preserveAspectRatio="none" style="position:absolute;bottom:0;left:0;width:100%;height:56px;display:block">
+      <path d="M0,28 C133,56 267,0 400,28 C533,56 667,0 800,28 L800,56 L0,56 Z" fill="#fff"/>
+    </svg>
+  </div>
+  <div style="padding:6px 28px 24px">
+    <div style="display:flex;gap:14px;margin-bottom:16px;margin-top:8px">
+      <div style="flex:1;background:#F8FAFC;border-radius:10px;padding:14px 16px;border-top:3px solid ${p}">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:6px">From</div>
+        ${fromBlock(inv.from, p)}
+      </div>
+      <div style="flex:1;background:#F8FAFC;border-radius:10px;padding:14px 16px;border-top:3px solid ${dc}">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:6px">Billed To</div>
+        ${toBlock(inv.to, p)}
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;margin-bottom:14px">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+        <thead><tr style="background:${p}">
+          <th style="padding:8px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${descW}">${descLabel}</th>
+          ${hasExtra ? `<th style="padding:8px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${extraW}">${extraLabel}</th>` : ''}
+          <th style="padding:8px 14px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${qtyW}">${qtyLabel}</th>
+          <th style="padding:8px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">${priceLabel}</th>
+          <th style="padding:8px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">Total</th>
+        </tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <div style="min-width:260px;background:#F8FAFC;border-radius:10px;padding:12px 16px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748B;padding:3px 0"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748B;border-bottom:1px solid #E2E8F0;padding:3px 0 8px"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;color:${p};padding:8px 0 2px"><span>TOTAL</span><span>${formatCurrency(total, cur)}</span></div>
+      </div>
+    </div>
+    ${notes ? `<div style="background:#F8FAFC;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#64748B"><strong style="color:#1E293B">Notes: </strong>${notes}</div>` : ''}
+    ${payHtml}${social}
+  </div>
+</div>
+</body></html>`;
+}
+
+function buildGeometric(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payHtml, notes, sig, social, colHeaders) {
+  const { primaryColor: p, lightColor: lc, darkColor: dc } = tpl;
+  const ch = colHeaders ?? {};
+  const descLabel  = ch.desc || 'Description';
+  const qtyLabel   = ch.qty  || 'Qty';
+  const priceLabel = ch.price || 'Unit Price';
+  const extraLabel = ch.extraLabel || '';
+  const hasExtra   = !!extraLabel;
+  const colCount   = hasExtra ? 5 : 4;
+  const descW = hasExtra ? '35%' : '44%'; const extraW = '14%';
+  const qtyW  = hasExtra ? '7%'  : '8%';  const numW  = hasExtra ? '22%' : '24%';
+  const trs = rows.map((r, i) => {
+    if (r.type === 'section') return `<tr><td colspan="${colCount}" style="padding:5px 12px;font-size:12px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
+    return `<tr style="${i % 2 !== 0 ? `background:${lc}33` : ''}">
+      <td style="padding:7px 12px;border-bottom:1px solid #E2E8F0;font-size:12px">${buildDescContent(r, '#475569')}</td>
+      ${hasExtra ? `<td style="padding:7px 12px;border-bottom:1px solid #E2E8F0;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:7px 12px;border-bottom:1px solid #E2E8F0;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:7px 12px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:7px 12px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:12px;font-weight:600">${r.total}</td>
+    </tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+<div style="max-width:800px;margin:0 auto;background:#fff">
+  <div style="background:#1A2332;padding:24px 28px 22px;position:relative;overflow:hidden">
+    <svg style="position:absolute;top:0;right:0;width:160px;height:160px" viewBox="0 0 160 160" preserveAspectRatio="none">
+      <polygon points="160,0 0,0 160,160" fill="${p}" opacity="0.9"/>
+    </svg>
+    <svg style="position:absolute;bottom:12px;right:16px;width:36px;height:36px" viewBox="0 0 36 36">
+      <rect x="0" y="0" width="16" height="16" fill="rgba(255,255,255,0.15)"/>
+      <rect x="20" y="20" width="16" height="16" fill="rgba(255,255,255,0.08)"/>
+    </svg>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;position:relative;z-index:1">
+      <div>
+        ${logoSrc ? `<img src="${logoSrc}" style="height:68px;max-width:170px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:10px"/>` : ''}
+        <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px">${docTitle}</div>
+        <div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:3px;letter-spacing:1px">${inv.number}</div>
+      </div>
+      <div style="text-align:right;color:#fff">
+        <div style="font-size:12px;opacity:0.55;text-transform:uppercase;letter-spacing:1px">Date</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px">${formatDate(inv.date)}</div>
+        ${inv.dueDate ? `<div style="font-size:11px;opacity:0.55;text-transform:uppercase;letter-spacing:1px">Due</div><div style="font-size:14px;font-weight:700">${formatDate(inv.dueDate)}</div>` : ''}
+      </div>
+    </div>
+  </div>
+  <div style="padding:20px 28px">
+    <div style="display:flex;gap:14px;margin-bottom:18px">
+      <div style="flex:1;border-left:4px solid ${p};padding:10px 14px;background:#F8FAFC;border-radius:0 8px 8px 0">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:5px">From</div>
+        ${fromBlock(inv.from, p)}
+      </div>
+      <div style="flex:1;border-left:4px solid ${dc};padding:10px 14px;background:#F8FAFC;border-radius:0 8px 8px 0">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${dc};margin-bottom:5px">Billed To</div>
+        ${toBlock(inv.to, p)}
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:14px">
+      <thead><tr style="background:#1A2332">
+        <th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${descW}">${descLabel}</th>
+        ${hasExtra ? `<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${extraW}">${extraLabel}</th>` : ''}
+        <th style="padding:8px 12px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${qtyW}">${qtyLabel}</th>
+        <th style="padding:8px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">${priceLabel}</th>
+        <th style="padding:8px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">Total</th>
+      </tr></thead>
+      <tbody>${trs}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <table style="width:260px;border-collapse:collapse;font-size:12px">
+        <tr><td style="padding:4px 0;color:#64748B">Subtotal</td><td style="padding:4px 0;text-align:right">${formatCurrency(sub, cur)}</td></tr>
+        <tr style="border-bottom:1px solid #E2E8F0"><td style="padding:4px 0 8px;color:#64748B">VAT (${inv.vatRate ?? 0}%)</td><td style="padding:4px 0 8px;text-align:right">${formatCurrency(vat, cur)}</td></tr>
+        <tr><td style="padding:10px 0 2px;font-weight:800;font-size:16px;color:#1A2332">TOTAL</td><td style="padding:10px 0 2px;text-align:right;font-weight:800;font-size:16px;color:${p}">${formatCurrency(total, cur)}</td></tr>
+      </table>
+    </div>
+    ${notes ? `<p style="font-size:12px;color:#64748B;margin:0 0 10px"><strong style="color:#1E293B">Notes: </strong>${notes}</p>` : ''}
+    ${payHtml}${social}
+  </div>
+</div>
+</body></html>`;
+}
+
+function buildSidebar(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payHtml, notes, sig, social, colHeaders) {
+  const { primaryColor: p, lightColor: lc, darkColor: dc } = tpl;
+  const ch = colHeaders ?? {};
+  const descLabel  = ch.desc || 'Description';
+  const qtyLabel   = ch.qty  || 'Qty';
+  const priceLabel = ch.price || 'Unit Price';
+  const extraLabel = ch.extraLabel || '';
+  const hasExtra   = !!extraLabel;
+  const colCount   = hasExtra ? 5 : 4;
+  const descW = hasExtra ? '35%' : '44%'; const extraW = '14%';
+  const qtyW  = hasExtra ? '7%'  : '8%';  const numW  = hasExtra ? '22%' : '24%';
+  const trs = rows.map((r, i) => {
+    if (r.type === 'section') return `<tr><td colspan="${colCount}" style="padding:5px 10px;font-size:12px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
+    return `<tr style="${i % 2 !== 0 ? `background:${lc}44` : ''}">
+      <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:11px">${buildDescContent(r, '#64748B', '10px')}</td>
+      ${hasExtra ? `<td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;font-size:11px">${r.extra}</td>` : ''}
+      <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;text-align:center;font-size:11px">${r.qty}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:11px">${r.price}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;text-align:right;font-size:11px;font-weight:600">${r.total}</td>
+    </tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+<table style="max-width:800px;margin:0 auto;width:100%;border-collapse:collapse;table-layout:fixed">
+  <tr>
+    <td style="width:220px;background:${p};vertical-align:top;padding:28px 20px">
+      ${logoSrc ? `<img src="${logoSrc}" style="height:60px;max-width:160px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:20px"/>` : ''}
+      <div style="color:rgba(255,255,255,0.55);font-size:9px;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Company</div>
+      <div style="color:#fff;font-size:14px;font-weight:700;margin-bottom:12px">${escHtml(inv.from?.name)}</div>
+      ${inv.from?.address ? `<div style="color:rgba(255,255,255,0.7);font-size:11px;line-height:1.6;margin-bottom:8px">${escHtml(inv.from.address).replace(/\n/g,'<br/>')}</div>` : ''}
+      ${inv.from?.tin    ? `<div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:4px">TIN: ${escHtml(inv.from.tin)}</div>` : ''}
+      ${inv.from?.phone  ? `<div style="color:rgba(255,255,255,0.75);font-size:11px;margin-bottom:4px">${escHtml(inv.from.phone)}</div>` : ''}
+      ${inv.from?.email  ? `<div style="color:rgba(255,255,255,0.75);font-size:11px;word-break:break-all">${escHtml(inv.from.email)}</div>` : ''}
+      <div style="border-top:1px solid rgba(255,255,255,0.2);margin:20px 0"></div>
+      <div style="color:rgba(255,255,255,0.55);font-size:9px;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px">Invoice Details</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:10px">Invoice No.</div>
+      <div style="color:#fff;font-size:12px;font-weight:700;margin-bottom:8px">${inv.number}</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:10px">Date</div>
+      <div style="color:#fff;font-size:12px;font-weight:700;margin-bottom:8px">${formatDate(inv.date)}</div>
+      ${inv.dueDate ? `<div style="color:rgba(255,255,255,0.6);font-size:10px">Due Date</div><div style="color:#fff;font-size:12px;font-weight:700">${formatDate(inv.dueDate)}</div>` : ''}
+    </td>
+    <td style="vertical-align:top;padding:28px 24px;background:#fff">
+      <div style="font-size:30px;font-weight:900;color:#1A2332;letter-spacing:-1px;margin-bottom:18px">${docTitle}</div>
+      <div style="background:#F8FAFC;border-radius:8px;padding:14px 16px;margin-bottom:20px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:6px">Billed To</div>
+        ${toBlock(inv.to, p)}
+      </div>
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:14px">
+        <thead><tr style="background:${p}">
+          <th style="padding:7px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${descW}">${descLabel}</th>
+          ${hasExtra ? `<th style="padding:7px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${extraW}">${extraLabel}</th>` : ''}
+          <th style="padding:7px 10px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${qtyW}">${qtyLabel}</th>
+          <th style="padding:7px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">${priceLabel}</th>
+          <th style="padding:7px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">Total</th>
+        </tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+        <div style="min-width:220px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B;padding:3px 0"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748B;border-bottom:1px solid #E2E8F0;padding:3px 0 6px"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:17px;font-weight:800;color:${p};padding:8px 0 0"><span>TOTAL</span><span>${formatCurrency(total, cur)}</span></div>
+        </div>
+      </div>
+      ${notes ? `<div style="background:#F8FAFC;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#64748B"><strong style="color:#1E293B">Notes: </strong>${notes}</div>` : ''}
+      ${payHtml}${social}
+    </td>
+  </tr>
+</table>
+</body></html>`;
+}
+
+function buildCorporate(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payHtml, notes, sig, social, colHeaders) {
+  const { primaryColor: p, lightColor: lc, darkColor: dc } = tpl;
+  const ch = colHeaders ?? {};
+  const descLabel  = ch.desc || 'Description';
+  const qtyLabel   = ch.qty  || 'Qty';
+  const priceLabel = ch.price || 'Unit Price';
+  const extraLabel = ch.extraLabel || '';
+  const hasExtra   = !!extraLabel;
+  const colCount   = hasExtra ? 5 : 4;
+  const descW = hasExtra ? '35%' : '44%'; const extraW = '14%';
+  const qtyW  = hasExtra ? '7%'  : '8%';  const numW  = hasExtra ? '22%' : '24%';
+  const trs = rows.map((r, i) => {
+    if (r.type === 'section') return `<tr><td colspan="${colCount}" style="padding:5px 14px;font-size:12px;font-weight:700;color:${p};background:${lc}88">${r.desc}</td></tr>`;
+    return `<tr style="${i % 2 !== 0 ? `background:${lc}33` : ''}">
+      <td style="padding:7px 14px;border-bottom:1px solid #E5E7EB;font-size:12px">${buildDescContent(r, '#475569')}</td>
+      ${hasExtra ? `<td style="padding:7px 14px;border-bottom:1px solid #E5E7EB;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:7px 14px;border-bottom:1px solid #E5E7EB;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:7px 14px;border-bottom:1px solid #E5E7EB;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:7px 14px;border-bottom:1px solid #E5E7EB;text-align:right;font-size:12px;font-weight:600">${r.total}</td>
+    </tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+<div style="max-width:800px;margin:0 auto;background:#fff">
+  <table style="width:100%;height:90px;border-collapse:collapse;table-layout:fixed">
+  <tbody><tr>
+    <td style="width:60%;background:#1A2332;vertical-align:middle;padding:0 24px">
+      <div style="display:flex;align-items:center">
+        ${logoSrc ? `<img src="${logoSrc}" style="height:52px;max-width:140px;object-fit:contain;object-position:left;display:block;border-radius:4px;margin-right:16px"/>` : ''}
+        <div>
+          <div style="font-size:18px;font-weight:900;color:#fff">${docTitle}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px">${inv.number}</div>
+        </div>
+      </div>
+    </td>
+    <td style="width:40%;background:${p};vertical-align:middle;padding:0 24px;text-align:right">
+      <div style="color:#fff">
+        <div style="font-size:11px;opacity:0.7">${formatDate(inv.date)}</div>
+        ${inv.dueDate ? `<div style="font-size:11px;opacity:0.55;margin-top:2px">Due ${formatDate(inv.dueDate)}</div>` : ''}
+      </div>
+    </td>
+  </tr></tbody>
+  </table>
+  <div style="background:${lc};padding:8px 24px;display:flex;gap:20px;align-items:center">
+    ${inv.from?.phone  ? `<span style="font-size:10px;color:${dc}">${escHtml(inv.from.phone)}</span>` : ''}
+    ${inv.from?.email  ? `<span style="font-size:10px;color:${dc}">${escHtml(inv.from.email)}</span>` : ''}
+    ${inv.from?.website? `<span style="font-size:10px;color:${dc}">${escHtml(inv.from.website)}</span>` : ''}
+  </div>
+  <div style="padding:20px 24px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:18px">
+      <div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:5px">From</div>
+        ${fromBlock(inv.from, p)}
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:5px">Billed To</div>
+        ${toBlock(inv.to, p)}
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:14px">
+      <thead><tr style="background:${p}">
+        <th style="padding:8px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${descW}">${descLabel}</th>
+        ${hasExtra ? `<th style="padding:8px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${extraW}">${extraLabel}</th>` : ''}
+        <th style="padding:8px 14px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${qtyW}">${qtyLabel}</th>
+        <th style="padding:8px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">${priceLabel}</th>
+        <th style="padding:8px 14px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:${numW}">Total</th>
+      </tr></thead>
+      <tbody>${trs}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <div style="min-width:260px;padding:12px 16px;background:#F8FAFC;border-radius:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748B;padding:3px 0"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748B;border-bottom:1px solid #E2E8F0;padding:3px 0 8px"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;color:${p};padding:8px 0 2px"><span>TOTAL</span><span>${formatCurrency(total, cur)}</span></div>
+      </div>
+    </div>
+    ${notes ? `<p style="font-size:12px;color:#64748B;margin:0 0 10px"><strong style="color:#1E293B">Notes: </strong>${notes}</p>` : ''}
+    ${payHtml}${social}
+  </div>
+</div>
+</body></html>`;
+}
+
+function buildStripe(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payHtml, notes, sig, social, colHeaders) {
+  const { primaryColor: p, lightColor: lc, darkColor: dc } = tpl;
+  const ch = colHeaders ?? {};
+  const descLabel  = ch.desc || 'Description';
+  const qtyLabel   = ch.qty  || 'Qty';
+  const priceLabel = ch.price || 'Unit Price';
+  const extraLabel = ch.extraLabel || '';
+  const hasExtra   = !!extraLabel;
+  const colCount   = hasExtra ? 5 : 4;
+  const descW = hasExtra ? '35%' : '44%'; const extraW = '14%';
+  const qtyW  = hasExtra ? '7%'  : '8%';  const numW  = hasExtra ? '22%' : '24%';
+  let rowNum = 0;
+  const trs = rows.map((r, i) => {
+    if (r.type === 'section') return `<tr><td colspan="${colCount + 1}" style="padding:5px 14px;font-size:12px;font-weight:700;color:${p};background:${lc}">${r.desc}</td></tr>`;
+    rowNum++;
+    const num = String(rowNum).padStart(2, '0');
+    return `<tr style="background:${i % 2 !== 0 ? lc + '44' : '#fff'}">
+      <td style="padding:7px 10px;text-align:center;font-size:11px;font-weight:700;color:${p};width:30px">${num}</td>
+      <td style="padding:7px 10px;font-size:12px">${buildDescContent(r, '#64748B')}</td>
+      ${hasExtra ? `<td style="padding:7px 10px;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:7px 10px;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:7px 10px;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:600">${r.total}</td>
+    </tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+<div style="max-width:800px;margin:0 auto;background:#fff">
+  <div style="background:${p};padding:20px 28px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        ${logoSrc ? `<img src="${logoSrc}" style="height:64px;max-width:160px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:10px"/>` : ''}
+        <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px">${docTitle}</div>
+      </div>
+      <div style="text-align:right;color:#fff">
+        <div style="font-size:18px;font-weight:700">${inv.number}</div>
+        <div style="opacity:0.75;font-size:12px;margin-top:3px">${formatDate(inv.date)}</div>
+        ${inv.dueDate ? `<div style="opacity:0.6;font-size:11px">Due ${formatDate(inv.dueDate)}</div>` : ''}
+      </div>
+    </div>
+  </div>
+  <div style="padding:18px 28px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:18px">
+      <div style="border-radius:8px;padding:12px 16px;background:#F8FAFC;flex:1;margin-right:12px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:5px">From</div>
+        ${fromBlock(inv.from, p)}
+      </div>
+      <div style="border-radius:8px;padding:12px 16px;background:#F8FAFC;flex:1;border-left:3px solid ${p}">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:5px">Billed To</div>
+        ${toBlock(inv.to, p)}
+      </div>
+    </div>
+    <div style="margin-bottom:14px;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+    <table style="width:100%;border-collapse:collapse;table-layout:auto">
+      <thead><tr style="background:${p}">
+        <th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:30px">#</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff">${descLabel}</th>
+        ${hasExtra ? `<th style="padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:14%">${extraLabel}</th>` : ''}
+        <th style="padding:8px 10px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:7%">${qtyLabel}</th>
+        <th style="padding:8px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:22%">${priceLabel}</th>
+        <th style="padding:8px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#fff;width:22%">Total</th>
+      </tr></thead>
+      <tbody>${trs}</tbody>
+    </table>
+    </div>
+    <div style="background:${lc};border-radius:8px;padding:12px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:flex-end;gap:40px">
+        <div style="font-size:12px;color:${dc}">Subtotal: <strong>${formatCurrency(sub, cur)}</strong></div>
+        <div style="font-size:12px;color:${dc}">VAT (${inv.vatRate ?? 0}%): <strong>${formatCurrency(vat, cur)}</strong></div>
+        <div style="font-size:18px;font-weight:800;color:${p}">TOTAL: ${formatCurrency(total, cur)}</div>
+      </div>
+    </div>
+    ${notes ? `<div style="background:#F8FAFC;border-radius:6px;padding:9px 14px;margin-bottom:10px;font-size:12px;color:#64748B"><strong style="color:#1E293B">Notes: </strong>${notes}</div>` : ''}
+    ${payHtml}${social}
+  </div>
+  <div style="height:7px;background:${p}"></div>
+</div>
+</body></html>`;
+}
+
+function buildExecutive(inv, tpl, docTitle, logoSrc, rows, cur, sub, vat, total, payHtml, notes, sig, social, colHeaders) {
+  const { primaryColor: p, lightColor: lc, darkColor: dc } = tpl;
+  const ch = colHeaders ?? {};
+  const descLabel  = ch.desc || 'Description';
+  const qtyLabel   = ch.qty  || 'Qty';
+  const priceLabel = ch.price || 'Unit Price';
+  const extraLabel = ch.extraLabel || '';
+  const hasExtra   = !!extraLabel;
+  const colCount   = hasExtra ? 5 : 4;
+  const descW = hasExtra ? '35%' : '44%'; const extraW = '14%';
+  const qtyW  = hasExtra ? '7%'  : '8%';  const numW  = hasExtra ? '22%' : '24%';
+  const trs = rows.map((r, i) => {
+    if (r.type === 'section') return `<tr><td colspan="${colCount}" style="padding:5px 14px;font-size:12px;font-weight:700;color:${p};background:#F8FAFC;border-bottom:1px solid #E2E8F0">${r.desc}</td></tr>`;
+    return `<tr>
+      <td style="padding:8px 14px;border-bottom:1px solid #F1F5F9;font-size:12px">${buildDescContent(r, '#64748B')}</td>
+      ${hasExtra ? `<td style="padding:8px 14px;border-bottom:1px solid #F1F5F9;font-size:12px">${r.extra}</td>` : ''}
+      <td style="padding:8px 14px;border-bottom:1px solid #F1F5F9;text-align:center;font-size:12px">${r.qty}</td>
+      <td style="padding:8px 14px;border-bottom:1px solid #F1F5F9;text-align:right;font-size:12px">${r.price}</td>
+      <td style="padding:8px 14px;border-bottom:1px solid #F1F5F9;text-align:right;font-size:12px;font-weight:600;color:${p}">${r.total}</td>
+    </tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:;"/></head>
+<body style="margin:0;padding:0;background:#fff;font-family:Helvetica,Arial,sans-serif;color:#1E293B">
+<div style="max-width:800px;margin:0 auto;background:#fff">
+  <div style="background:#1A2332;padding:28px 32px 24px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end">
+      <div>
+        ${logoSrc ? `<img src="${logoSrc}" style="height:64px;max-width:160px;object-fit:contain;object-position:left;display:block;border-radius:6px;margin-bottom:14px"/>` : ''}
+        <div style="font-size:10px;color:${p};text-transform:uppercase;letter-spacing:3px;font-weight:700;margin-bottom:4px">${docTitle}</div>
+        <div style="font-size:24px;font-weight:700;color:#fff">${inv.number}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px">Issued</div>
+        <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:8px">${formatDate(inv.date)}</div>
+        ${inv.dueDate ? `<div style="font-size:11px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px">Due</div><div style="font-size:14px;font-weight:600;color:${p}">${formatDate(inv.dueDate)}</div>` : ''}
+      </div>
+    </div>
+  </div>
+  <div style="height:4px;background:${p}"></div>
+  <div style="padding:24px 32px">
+    <div style="display:flex;gap:16px;margin-bottom:22px">
+      <div style="flex:1;padding:14px 16px;background:#F8FAFC;border-radius:8px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${p};margin-bottom:6px">From</div>
+        ${fromBlock(inv.from, p)}
+      </div>
+      <div style="flex:1;padding:14px 16px;background:#F8FAFC;border-radius:8px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#475569;margin-bottom:6px">Billed To</div>
+        ${toBlock(inv.to, p)}
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:16px">
+      <thead><tr style="border-bottom:2px solid #1A2332">
+        <th style="padding:8px 14px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#475569;font-weight:600;width:${descW}">${descLabel}</th>
+        ${hasExtra ? `<th style="padding:8px 14px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#475569;font-weight:600;width:${extraW}">${extraLabel}</th>` : ''}
+        <th style="padding:8px 14px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#475569;font-weight:600;width:${qtyW}">${qtyLabel}</th>
+        <th style="padding:8px 14px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#475569;font-weight:600;width:${numW}">${priceLabel}</th>
+        <th style="padding:8px 14px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#475569;font-weight:600;width:${numW}">Total</th>
+      </tr></thead>
+      <tbody>${trs}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <div style="min-width:260px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748B;padding:4px 0"><span>Subtotal</span><span>${formatCurrency(sub, cur)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748B;border-bottom:1px solid #E2E8F0;padding:4px 0 10px"><span>VAT (${inv.vatRate ?? 0}%)</span><span>${formatCurrency(vat, cur)}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:10px 0 2px;font-size:20px;font-weight:800;color:#1A2332"><span>TOTAL</span><span style="color:${p}">${formatCurrency(total, cur)}</span></div>
+      </div>
+    </div>
+    ${notes ? `<p style="font-size:12px;color:#64748B;border-top:1px solid #F1F5F9;padding-top:12px;margin:0 0 10px"><strong style="color:#1E293B">Notes: </strong>${notes}</p>` : ''}
+    ${payHtml}${social}
+  </div>
+</div>
+</body></html>`;
+}
+
 // ─── Page-2 continuation ─────────────────────────────────────────────────────
 // Produces a second-page div (page-break-before:always) for invoices with >8
 // items. Matches the template style and repeats the sig/stamp footer.
@@ -536,7 +1025,7 @@ function buildPage2(rows2, tpl, colHeaders, cur, payHtml, social, style, invNumb
     const totalClr = isDark ? 'color:#F1F5F9;' : '';
     return `
     <tr style="${rowBg}">
-      <td style="padding:${cellPad};${border}font-size:12px;${cellClr}">${r.desc}${r.notes ? `<div style="font-size:10px;color:#94A3B8;margin-top:2px;font-style:italic">${r.notes}</div>` : ''}</td>
+      <td style="padding:${cellPad};${border}font-size:12px;${cellClr}">${buildDescContent(r, isDark ? '#94A3B8' : '#475569')}</td>
       ${hasExtra ? `<td style="padding:${cellPad};${border}font-size:12px;${cellClr}">${r.extra}</td>` : ''}
       <td style="padding:${cellPad};${border}text-align:center;font-size:12px;${cellClr}">${r.qty}</td>
       <td style="padding:${cellPad};${border}text-align:right;font-size:12px;${cellClr}">${r.price}</td>
@@ -587,6 +1076,43 @@ function buildPage2(rows2, tpl, colHeaders, cur, payHtml, social, style, invNumb
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// Synchronous thumbnail builder — no logo/stamp/image loading.
+// Used by template-picker gallery cards for lightweight visual previews.
+export function buildThumbnailHTML(templateId) {
+  const tpl = getTemplate(templateId);
+  const sample = {
+    id: 'THUMB', number: 'INV-001', type: 'invoice', docTitle: 'INVOICE', templateId,
+    date: '2025-01-15', dueDate: '2025-01-29',
+    from: { name: 'Your Business', address: 'Kigali, Rwanda', tin: '', phone: '+250 788 000 000', email: 'hello@business.rw', instagram: '', website: '', businessEmail: '' },
+    to: { name: 'Client Name', address: 'Kigali', tin: '', email: '' },
+    items: [
+      { id: '1', type: 'item', description: 'Design Service', notes: '', qty: 1, unitPrice: 150000 },
+      { id: '2', type: 'item', description: 'Development Work', notes: '', qty: 2, unitPrice: 80000 },
+      { id: '3', type: 'item', description: 'Monthly Retainer', notes: '', qty: 1, unitPrice: 50000 },
+    ],
+    colHeaders: { desc: 'Description', qty: 'Qty', price: 'Unit Price', extraLabel: '' },
+    vatRate: 18, currency: 'RWF', subtotal: 360000, vatAmount: 64800, total: 424800, notes: '',
+  };
+  const rows = itemRows(sample.items, 'RWF');
+  const ch = sample.colHeaders;
+  const args = [sample, tpl, 'INVOICE', null, rows, 'RWF', 360000, 64800, 424800, '', '', '', '', ch];
+  const style = tpl.style ?? 'modern';
+  let html;
+  if      (style === 'modern')    html = buildModern(...args);
+  else if (style === 'classic')   html = buildClassic(...args);
+  else if (style === 'minimal')   html = buildMinimal(...args);
+  else if (style === 'bold')      html = buildBold(...args);
+  else if (style === 'wave')      html = buildWave(...args);
+  else if (style === 'geometric') html = buildGeometric(...args);
+  else if (style === 'sidebar')   html = buildSidebar(...args);
+  else if (style === 'corporate') html = buildCorporate(...args);
+  else if (style === 'stripe')    html = buildStripe(...args);
+  else if (style === 'executive') html = buildExecutive(...args);
+  else                            html = buildDark(...args);
+  html = html.replace('</head>', '<meta name="viewport" content="width=800"/></head>');
+  return html;
+}
+
 export async function buildInvoiceHTML(invoice, _paymentLink = '') {
   const tpl = getTemplate(invoice.templateId);
   const currency = invoice.currency ?? 'RWF';
@@ -595,8 +1121,39 @@ export async function buildInvoiceHTML(invoice, _paymentLink = '') {
 
   const logoSrc = invoice.noLogo ? null : await getBusinessLogo();
   const stampSrc = await getStampPhoto();
+
+  // Load product images (per-item optional photo)
+  const itemImages = {};
+  await Promise.all((invoice.items ?? []).map(async item => {
+    if (item.imageUri) {
+      const src = await uriToBase64(item.imageUri);
+      if (src) itemImages[item.id] = src;
+    }
+  }));
+
+  // Build attachments section (images appended at end of PDF)
+  let attachHtml = '';
+  if ((invoice.attachments ?? []).length > 0) {
+    const loaded = await Promise.all(invoice.attachments.map(async a => {
+      const src = await uriToBase64(a.uri);
+      return src ? { ...a, src } : null;
+    }));
+    const valid = loaded.filter(Boolean);
+    if (valid.length > 0) {
+      const imgs = valid.map(a => `
+        <div style="display:inline-block;margin:6px;vertical-align:top">
+          <img src="${a.src}" style="width:235px;height:176px;object-fit:cover;border-radius:8px;display:block"/>
+          ${a.caption ? `<div style="font-size:11px;color:#64748B;margin-top:4px;max-width:235px;text-align:center">${escHtml(a.caption)}</div>` : ''}
+        </div>`).join('');
+      attachHtml = `<div style="max-width:800px;margin:0 auto;padding:0 24px 28px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#94A3B8;padding-top:16px;padding-bottom:8px;border-top:1px solid #E5E7EB;margin-bottom:10px">Attachments</div>
+        <div>${imgs}</div>
+      </div>`;
+    }
+  }
+
   const ITEMS_PER_PAGE = 8;
-  const allRows = itemRows(invoice.items, currency);
+  const allRows = itemRows(invoice.items, currency, itemImages);
   const isMultiPage = allRows.length > ITEMS_PER_PAGE;
   const rows  = isMultiPage ? allRows.slice(0, ITEMS_PER_PAGE) : allRows;
   const rows2 = isMultiPage ? allRows.slice(ITEMS_PER_PAGE) : [];
@@ -606,19 +1163,19 @@ export async function buildInvoiceHTML(invoice, _paymentLink = '') {
 
   const sigBlock = invoice.signature
     ? `<div>
-        <img src="${invoice.signature}" style="max-height:50px;max-width:150px;display:block"/>
+        <img src="${invoice.signature}" style="max-height:80px;max-width:220px;display:block"/>
         <p style="font-size:9px;color:#94A3B8;text-transform:uppercase;letter-spacing:1.5px;margin-top:6px">Authorized Signature</p>
        </div>`
     : '<div></div>';
 
   const stampBlock = stampSrc
     ? `<div style="text-align:center">
-        <img src="${stampSrc}" style="max-height:230px;max-width:250px;display:block;object-fit:contain"/>
+        <img src="${stampSrc}" style="max-height:260px;max-width:280px;display:block;object-fit:contain"/>
        </div>`
     : '';
 
   const payHtml = (invoice.signature || stampSrc)
-    ? `<div style="margin-top:18px;padding-top:10px;border-top:1px solid rgba(128,128,128,0.2);display:flex;justify-content:space-between;align-items:flex-end">
+    ? `<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(128,128,128,0.2);display:flex;justify-content:space-between;align-items:flex-end">
         ${sigBlock}${stampBlock}
        </div>`
     : '';
@@ -634,19 +1191,33 @@ export async function buildInvoiceHTML(invoice, _paymentLink = '') {
   const safeInv      = { ...invoice, number: safeNumber, status: safeStatus };
   const args = [safeInv, tpl, safeDocTitle, logoSrc, rows, currency, subtotal, vatAmount, total, payHtml, safeNotes, sig, social, colHeaders];
   let html;
-  if (style === 'modern')       html = buildModern(...args);
-  else if (style === 'classic') html = buildClassic(...args);
-  else if (style === 'minimal') html = buildMinimal(...args);
-  else if (style === 'bold')    html = buildBold(...args);
-  else                          html = buildDark(...args);
+  if      (style === 'modern')    html = buildModern(...args);
+  else if (style === 'classic')   html = buildClassic(...args);
+  else if (style === 'minimal')   html = buildMinimal(...args);
+  else if (style === 'bold')      html = buildBold(...args);
+  else if (style === 'wave')      html = buildWave(...args);
+  else if (style === 'geometric') html = buildGeometric(...args);
+  else if (style === 'sidebar')   html = buildSidebar(...args);
+  else if (style === 'corporate') html = buildCorporate(...args);
+  else if (style === 'stripe')    html = buildStripe(...args);
+  else if (style === 'executive') html = buildExecutive(...args);
+  else                            html = buildDark(...args);
 
   // Append page 2 continuation when there are more than ITEMS_PER_PAGE rows.
+  // Social footer is intentionally omitted from page 2 — it's already on page 1
+  // and including it risks pushing content onto a blank page 3.
   if (isMultiPage) {
-    const page2 = buildPage2(rows2, tpl, colHeaders, currency, payHtml, social, style, safeNumber);
+    const page2 = buildPage2(rows2, tpl, colHeaders, currency, payHtml, '', style, safeNumber);
     html = html.replace('</body></html>', page2 + '</body></html>');
   }
 
-  // no injected print CSS needed
+  // Viewport width=800 ensures WebView preview and PDF render identically.
+  html = html.replace('</head>', '<meta name="viewport" content="width=800"/><style>@page{margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}@media print{body{padding-bottom:0!important;margin-bottom:0!important;}}</style></head>');
+
+  // Append attachment images before closing body tag.
+  if (attachHtml) {
+    html = html.replace('</body></html>', `${attachHtml}</body></html>`);
+  }
 
   return html;
 }
@@ -664,9 +1235,10 @@ export async function shareInvoice(invoice, paymentLink = '') {
   if (!available) throw new Error('Sharing not available on this device');
 
   const clientName = safeName(invoice.to?.name);
+  const docType = safeName(invoice.docTitle || 'Invoice');
   const invNum = (invoice.number ?? '').replace(/[^a-zA-Z0-9-]/g, '') || 'Invoice';
   const dateStr = (invoice.date ?? new Date().toISOString().slice(0, 10)).replace(/-/g, '');
-  const fileName = `${clientName}_${invNum}_${dateStr}.pdf`;
+  const fileName = `${clientName}_${docType}_${invNum}_${dateStr}.pdf`;
   const dialogTitle = `${invoice.number} — ${invoice.to?.name ?? ''}`;
   // Try to copy to a named file so the sharing dialog shows a readable filename.
   // Use cacheDirectory — same filesystem as expo-print's temp output.

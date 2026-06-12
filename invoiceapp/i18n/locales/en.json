@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "save": "Save",
     "cancel": "Cancel",
@@ -74,9 +74,9 @@
     "print": "Print",
     "remind": "Remind",
     "copyPaymentLink": "Copy Payment Confirmation Link",
-    "copyPaymentLinkSub": "Send to client after they pay — auto-marks invoice as paid",
-    "payWithMoMo": "Pay with MoMo / Card",
-    "receivePayment": "Receive Payment from MoMo / Card",
+    "copyPaymentLinkSub": "Send to client after they pay â€” auto-marks invoice as paid",
+    "payWithMoMo": "Pay with MoMo",
+    "receivePayment": "Receive Payment from MoMo",
     "paymentReceived": "Payment Received"
   },
   "payment": {
@@ -131,3 +131,4 @@
     "returnBody": "You haven't created an invoice in a while. Stay on top of your business!"
   }
 }
+

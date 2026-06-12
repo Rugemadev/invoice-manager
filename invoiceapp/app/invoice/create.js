@@ -14,7 +14,7 @@ import { Spacing, Radius, FontSize, Shadow } from '../../constants/theme';
 import { getTemplate } from '../../constants/templates';
 import {
   getInvoices, saveInvoice, getSettings, getBusinessLogo, saveBusinessLogo,
-  getClients, saveClient, getProducts, saveProduct,
+  getClients, saveClient, getProducts, saveProduct, getSavedNotes,
 } from '../../utils/storage';
 import { generateId, calcInvoice, formatCurrency } from '../../utils/invoice';
 
@@ -458,6 +458,8 @@ export default function CreateInvoice() {
     paramDocTitle ? decodeURIComponent(paramDocTitle) : (isProforma ? 'Proforma Invoice' : 'Invoice')
   );
   const [pickerForItemId, setPickerForItemId] = useState(null);
+  const [savedNotes, setSavedNotes] = useState([]);
+  const [showNotesPicker, setShowNotesPicker] = useState(false);
   const [from, setFrom] = useState({
     name: '', address: '', tin: '', phone: '', email: '',
     momoNumber: '', momoCode: '', instagram: '', website: '', businessEmail: '',
@@ -470,17 +472,19 @@ export default function CreateInvoice() {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showFullPreview, setShowFullPreview] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [attachments, setAttachments] = useState([]);
 
   const colHeaders = { desc: 'Description', extraLabel: '', qty: 'Qty', price: 'Unit Price' };
 
   useEffect(() => {
     (async () => {
-      const [allInvoices, settings, logoDataUri, clients, products] = await Promise.all([
-        getInvoices(), getSettings(), getBusinessLogo(), getClients(), getProducts(),
+      const [allInvoices, settings, logoDataUri, clients, products, notes] = await Promise.all([
+        getInvoices(), getSettings(), getBusinessLogo(), getClients(), getProducts(), getSavedNotes(),
       ]);
 
       setSavedClients(clients);
       setSavedProducts(products);
+      setSavedNotes(notes);
       if (logoDataUri) setLogoUri(logoDataUri);
 
       if (isEditing) {
@@ -496,6 +500,7 @@ export default function CreateInvoice() {
           if (inv.from) setFrom(inv.from);
           if (inv.to)   setTo(inv.to);
           if (inv.items?.length) setItems(inv.items);
+          if (inv.attachments?.length) setAttachments(inv.attachments);
         }
       } else {
         const prefix = isProforma ? 'PRO' : 'INV';
@@ -542,6 +547,55 @@ export default function CreateInvoice() {
     setLogoUri(dataUri);
     await saveBusinessLogo(dataUri);
   };
+
+  const pickItemImage = async (itemId) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images', quality: 0.5, base64: true,
+      allowsEditing: true, aspect: [1, 1],
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    let dataUri;
+    if (asset.base64) {
+      dataUri = `data:image/jpeg;base64,${asset.base64}`;
+    } else {
+      try {
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+        dataUri = `data:image/jpeg;base64,${base64}`;
+      } catch {
+        Alert.alert('', 'Could not read image. Please try another.'); return;
+      }
+    }
+    updateItem(itemId, 'imageUri', dataUri);
+  };
+
+  const addAttachment = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images', quality: 0.65, base64: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    let dataUri;
+    if (asset.base64) {
+      dataUri = `data:image/jpeg;base64,${asset.base64}`;
+    } else {
+      try {
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' });
+        dataUri = `data:image/jpeg;base64,${base64}`;
+      } catch {
+        Alert.alert('', 'Could not read image.'); return;
+      }
+    }
+    setAttachments(prev => [...prev, { id: generateId(), uri: dataUri, caption: '' }]);
+  };
+
+  const removeAttachment = (attId) => setAttachments(prev => prev.filter(a => a.id !== attId));
+  const updateAttachmentCaption = (attId, caption) =>
+    setAttachments(prev => prev.map(a => a.id === attId ? { ...a, caption } : a));
 
   const updateItem = (id, field, val) => setItems(p => p.map(i => i.id === id ? { ...i, [field]: val } : i));
   const removeItem = (id) => {
@@ -603,6 +657,7 @@ export default function CreateInvoice() {
         date, dueDate,
         docTitle,
         from, to, items,
+        attachments,
         colHeaders,
         vatRate, currency, notes,
         subtotal, vatAmount, total,
@@ -629,6 +684,7 @@ export default function CreateInvoice() {
       signature: settings.signature ?? null,
       docTitle,
       from, to, items,
+      attachments,
       colHeaders,
       vatRate, currency, notes,
       subtotal, vatAmount, total,
@@ -780,6 +836,30 @@ export default function CreateInvoice() {
               </View>
               <Field label={t('invoice.itemDescription')} value={item.description} onChangeText={v => updateItem(item.id, 'description', v)} />
               <Field label="Notes (optional)" value={item.notes ?? ''} onChangeText={v => updateItem(item.id, 'notes', v)} multiline placeholder="Size, colour, additional details..." />
+              {/* Product photo */}
+              {item.imageUri ? (
+                <View style={styles.itemImgRow}>
+                  <Image source={{ uri: item.imageUri }} style={styles.itemThumb} />
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Text style={styles.itemImgLabel}>Product Photo</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity style={[styles.itemImgBtn, { borderColor: primary + '55' }]} onPress={() => pickItemImage(item.id)} activeOpacity={0.7}>
+                        <Ionicons name="swap-horizontal-outline" size={13} color={primary} />
+                        <Text style={[styles.itemImgBtnTxt, { color: primary }]}>Change</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.itemImgBtn, { borderColor: Colors.danger + '55' }]} onPress={() => updateItem(item.id, 'imageUri', null)} activeOpacity={0.7}>
+                        <Ionicons name="trash-outline" size={13} color={Colors.danger} />
+                        <Text style={[styles.itemImgBtnTxt, { color: Colors.danger }]}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity style={[styles.addPhotoBtn, { borderColor: primary + '44' }]} onPress={() => pickItemImage(item.id)} activeOpacity={0.7}>
+                  <Ionicons name="camera-outline" size={16} color={primary} />
+                  <Text style={[styles.addPhotoBtnTxt, { color: primary }]}>Add Product Photo</Text>
+                </TouchableOpacity>
+              )}
               <View style={styles.row}>
                 <View style={{ flex: 1 }}><Field label={colHeaders.qty || t('invoice.itemQty')} value={item.qty} onChangeText={v => updateItem(item.id, 'qty', v)} keyboardType="numeric" /></View>
                 <View style={{ flex: 2 }}><Field label={colHeaders.price || t('invoice.itemUnitPrice')} value={item.unitPrice} onChangeText={v => updateItem(item.id, 'unitPrice', v)} keyboardType="numeric" /></View>
@@ -794,6 +874,31 @@ export default function CreateInvoice() {
           <Text style={[styles.addItemText, { color: primary }]}>{t('invoice.addItem')}</Text>
         </TouchableOpacity>
 
+        {/* Attachments (images appended at end of PDF) */}
+        <SectionHeader title="Attachments" color={primary} />
+        {attachments.map(att => (
+          <View key={att.id} style={[styles.attCard, Shadow.sm]}>
+            <Image source={{ uri: att.uri }} style={styles.attThumb} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <TextInput
+                style={[styles.input, { fontSize: 12, paddingVertical: 6 }]}
+                value={att.caption}
+                onChangeText={v => updateAttachmentCaption(att.id, v)}
+                placeholder="Caption (optional)"
+                placeholderTextColor={Colors.textMuted}
+              />
+              <TouchableOpacity onPress={() => removeAttachment(att.id)} style={styles.attRemoveBtn} activeOpacity={0.7}>
+                <Ionicons name="trash-outline" size={14} color={Colors.danger} />
+                <Text style={styles.attRemoveTxt}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+        <TouchableOpacity style={[styles.addItemBtn, { borderColor: primary }]} onPress={addAttachment} activeOpacity={0.7}>
+          <Ionicons name="attach-outline" size={20} color={primary} />
+          <Text style={[styles.addItemText, { color: primary }]}>Attach Image to PDF</Text>
+        </TouchableOpacity>
+
         {/* Totals */}
         <View style={[styles.totalsCard, Shadow.sm, { borderTopColor: primary }]}>
           <View style={styles.totalRow}><Text style={styles.totalLabel}>{t('invoice.subtotal')}</Text><Text style={styles.totalValue}>{subtotal.toLocaleString()} {currency}</Text></View>
@@ -804,7 +909,25 @@ export default function CreateInvoice() {
           </View>
         </View>
 
-        <Field label={t('invoice.notes')} value={notes} onChangeText={setNotes} placeholder={t('invoice.notesPlaceholder')} multiline />
+        <View style={styles.field}>
+          <View style={styles.notesHeader}>
+            <Text style={styles.fieldLabel}>{t('invoice.notes')}</Text>
+            {savedNotes.length > 0 && (
+              <TouchableOpacity onPress={() => setShowNotesPicker(true)} style={styles.useSavedBtn} activeOpacity={0.7}>
+                <Ionicons name="document-text-outline" size={13} color={primary} />
+                <Text style={[styles.useSavedTxt, { color: primary }]}>Use saved note</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <TextInput
+            style={[styles.input, styles.inputMultiline]}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder={t('invoice.notesPlaceholder')}
+            placeholderTextColor={Colors.textMuted}
+            multiline
+          />
+        </View>
 
         <TouchableOpacity style={[styles.saveBtn, { backgroundColor: primary }]} onPress={handleSave} activeOpacity={0.85}>
           <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
@@ -839,6 +962,36 @@ export default function CreateInvoice() {
         notes={notes} tpl={tpl} logoUri={logoUri} type={type} docTitle={docTitle}
       />
 
+      {/* Saved note picker */}
+      <Modal visible={showNotesPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowNotesPicker(false)}>
+        <View style={styles.notesModal}>
+          <View style={styles.notesModalHandle} />
+          <Text style={styles.notesModalTitle}>Choose a Saved Note</Text>
+          <FlatList
+            data={savedNotes}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ gap: 8, paddingBottom: 20 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.noteOption}
+                onPress={() => { setNotes(item.content); setShowNotesPicker(false); }}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="document-text-outline" size={20} color={primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.noteOptionTitle}>{item.title}</Text>
+                  <Text style={styles.noteOptionPreview} numberOfLines={2}>{item.content}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          />
+          <TouchableOpacity style={styles.notesCancelBtn} onPress={() => setShowNotesPicker(false)}>
+            <Text style={styles.notesCancelTxt}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       <CurrencyPickerModal
         visible={showCurrencyPicker}
         selected={currency}
@@ -865,7 +1018,18 @@ const styles = StyleSheet.create({
   logoChangeTxt: { fontSize: FontSize.xs, color: Colors.textMuted },
   row: { flexDirection: 'row', gap: Spacing.sm },
   field: { marginBottom: Spacing.sm },
-  fieldLabel: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.text, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  fieldLabel: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.text, textTransform: 'uppercase', letterSpacing: 0.5 },
+  notesHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  useSavedBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.primaryLight, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.primary + '40' },
+  useSavedTxt: { fontSize: FontSize.xs, fontWeight: '700' },
+  notesModal: { flex: 1, backgroundColor: Colors.surface, padding: Spacing.lg, paddingTop: Spacing.md },
+  notesModalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, alignSelf: 'center', marginBottom: Spacing.lg },
+  notesModalTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.text, marginBottom: Spacing.md },
+  noteOption: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.background, borderRadius: Radius.md, padding: Spacing.md },
+  noteOptionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text, marginBottom: 2 },
+  noteOptionPreview: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  notesCancelBtn: { alignItems: 'center', paddingVertical: Spacing.md },
+  notesCancelTxt: { fontSize: FontSize.md, color: Colors.textMuted },
   input: { backgroundColor: Colors.surface, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, fontSize: FontSize.md, color: '#111111' },
   inputMultiline: { minHeight: 72, textAlignVertical: 'top' },
   sectionHeader: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text, marginTop: Spacing.lg, marginBottom: Spacing.sm, borderLeftWidth: 3, paddingLeft: Spacing.sm },
@@ -879,6 +1043,21 @@ const styles = StyleSheet.create({
   sectionTitleInput: { fontWeight: '700' },
   addItemBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: Spacing.sm, borderWidth: 1.5, borderRadius: Radius.md, borderStyle: 'dashed', marginBottom: Spacing.md },
   addItemText: { fontSize: FontSize.sm, fontWeight: '600' },
+
+  // Product photo per item
+  itemImgRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 4, backgroundColor: Colors.background, borderRadius: Radius.sm, padding: 8 },
+  itemThumb: { width: 52, height: 52, borderRadius: 6, backgroundColor: Colors.border },
+  itemImgLabel: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  itemImgBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderRadius: Radius.sm },
+  itemImgBtnTxt: { fontSize: 11, fontWeight: '600' },
+  addPhotoBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 10, borderWidth: 1, borderRadius: Radius.sm, borderStyle: 'dashed', marginTop: 4, marginBottom: 4, alignSelf: 'flex-start' },
+  addPhotoBtnTxt: { fontSize: 12, fontWeight: '600' },
+
+  // Attachments section
+  attCard: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.sm, marginBottom: Spacing.sm },
+  attThumb: { width: 70, height: 70, borderRadius: 8, backgroundColor: Colors.border },
+  attRemoveBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  attRemoveTxt: { fontSize: 12, color: Colors.danger, fontWeight: '600' },
   totalsCard: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.md, borderTopWidth: 3 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   totalLabel: { fontSize: FontSize.md, color: Colors.textSecondary },

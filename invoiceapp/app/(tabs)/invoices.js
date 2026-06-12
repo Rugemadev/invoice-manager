@@ -17,18 +17,33 @@ const STATUS_COLOR = {
   draft: Colors.textMuted, sent: Colors.warning, paid: Colors.accent, overdue: Colors.danger,
 };
 
-const FILTERS = [
-  { key: 'all',      label: 'All' },
-  { key: 'invoice',  label: 'Invoices' },
-  { key: 'proforma', label: 'Proforma' },
-  { key: 'paid',     label: 'Paid' },
-  { key: 'archived', label: 'Archived' },
-];
+const DOC_TYPE_ORDER = ['Invoice', 'Proforma Invoice', 'Quotation', 'Receipt', 'Delivery Note', 'Purchase Order', 'Credit Note'];
+
+function buildFilters(invoices) {
+  const active = invoices.filter(i => !i.archived);
+  const titles = [...new Set(active.map(i => i.docTitle || 'Invoice'))];
+  titles.sort((a, b) => {
+    const ai = DOC_TYPE_ORDER.indexOf(a);
+    const bi = DOC_TYPE_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+  return [
+    { key: 'all', label: 'All' },
+    ...titles.map(t => ({ key: `doc:${t}`, label: t })),
+    { key: 'paid',     label: 'Paid' },
+    { key: 'archived', label: 'Archived' },
+  ];
+}
 
 function applyFilter(invoices, filter) {
+  if (filter.startsWith('doc:')) {
+    const title = filter.slice(4);
+    return invoices.filter(i => !i.archived && (i.docTitle || 'Invoice') === title);
+  }
   switch (filter) {
-    case 'invoice':  return invoices.filter(i => !i.archived && i.type !== 'proforma');
-    case 'proforma': return invoices.filter(i => !i.archived && i.type === 'proforma');
     case 'paid':     return invoices.filter(i => !i.archived && i.status === 'paid');
     case 'archived': return invoices.filter(i => i.archived);
     default:         return invoices.filter(i => !i.archived);
@@ -109,13 +124,18 @@ export default function Invoices() {
           )
         : filteredByChip);
 
-  const counts = {
-    all:      activeInvoices.length,
-    invoice:  activeInvoices.filter(i => i.type !== 'proforma').length,
-    proforma: activeInvoices.filter(i => i.type === 'proforma').length,
-    paid:     activeInvoices.filter(i => i.status === 'paid').length,
-    archived: allInvoices.filter(i => i.archived).length,
-  };
+  const filters = buildFilters(allInvoices);
+
+  const counts = {};
+  counts.all      = activeInvoices.length;
+  counts.paid     = activeInvoices.filter(i => i.status === 'paid').length;
+  counts.archived = allInvoices.filter(i => i.archived).length;
+  filters.forEach(f => {
+    if (f.key.startsWith('doc:')) {
+      const title = f.key.slice(4);
+      counts[f.key] = activeInvoices.filter(i => (i.docTitle || 'Invoice') === title).length;
+    }
+  });
 
   const handleDelete = (id, number) => {
     Alert.alert('Delete', `Permanently delete ${number}?\nThis cannot be undone.`, [
@@ -140,7 +160,7 @@ export default function Invoices() {
       <View style={styles.cardTop}>
         <View style={{ flex: 1 }}>
           <Text style={styles.number}>{item.number}</Text>
-          {item.type === 'proforma' && <Text style={styles.typeTag}>PROFORMA</Text>}
+          <Text style={styles.typeTag}>{(item.docTitle || 'Invoice').toUpperCase()}</Text>
         </View>
         <Text style={styles.amount}>{formatCurrency(item.total ?? 0, settings.currency)}</Text>
       </View>
@@ -213,7 +233,7 @@ export default function Invoices() {
       {/* Filter chips (only show when not drilling into a month) */}
       {!selectedMonthKey && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          {FILTERS.map(f => (
+          {filters.map(f => (
             <TouchableOpacity
               key={f.key}
               style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
@@ -221,7 +241,7 @@ export default function Invoices() {
               activeOpacity={0.7}
             >
               <Text style={[styles.filterTxt, filter === f.key && styles.filterTxtActive]}>{f.label}</Text>
-              {counts[f.key] > 0 && (
+              {(counts[f.key] ?? 0) > 0 && (
                 <View style={[styles.filterBadge, filter === f.key && styles.filterBadgeActive]}>
                   <Text style={[styles.filterBadgeTxt, filter === f.key && styles.filterBadgeTxtActive]}>{counts[f.key]}</Text>
                 </View>
@@ -285,7 +305,13 @@ export default function Invoices() {
           <View style={styles.emptyWrap}>
             <Ionicons name="document-outline" size={48} color={Colors.textMuted} />
             <Text style={styles.empty}>
-              {filter === 'archived' ? 'No archived invoices' : 'No invoices yet'}
+              {filter === 'archived'
+                ? 'No archived documents'
+                : filter.startsWith('doc:')
+                  ? `No ${filter.slice(4)} documents yet`
+                  : filter === 'paid'
+                    ? 'No paid documents yet'
+                    : 'No documents yet'}
             </Text>
           </View>
         }
@@ -370,7 +396,7 @@ const styles = StyleSheet.create({
   cardArchived: { opacity: 0.6 },
   cardTop:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 },
   number:       { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary },
-  typeTag:      { fontSize: FontSize.xs, color: Colors.accent, fontWeight: '700', marginTop: 2 },
+  typeTag:      { fontSize: 9, color: Colors.textMuted, fontWeight: '700', marginTop: 1, letterSpacing: 0.5 },
   amount:       { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
   client:       { fontSize: FontSize.md, color: Colors.text, marginBottom: 8 },
   cardBottom:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

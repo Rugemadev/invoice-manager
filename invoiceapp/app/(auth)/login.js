@@ -5,9 +5,14 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 import { Colors } from '../../constants/colors';
 import { Spacing, FontSize, Radius, Shadow } from '../../constants/theme';
 import { signIn, sanitizeAuthError } from '../../utils/auth';
+import { supabase } from '../../utils/supabase';
+
+WebBrowser.maybeCompleteAuthSession();
 
 // Lock out for 30 s after 5 consecutive failures; reset on success.
 const MAX_ATTEMPTS = 5;
@@ -15,48 +20,65 @@ const LOCKOUT_MS   = 30_000;
 
 export default function Login() {
   const router = useRouter();
-  const [email, setEmail]     = useState('');
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw]   = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [showPw, setShowPw]       = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [socialLoading, setSocialLoading] = useState(null);
 
   const failCount  = useRef(0);
   const lockUntil  = useRef(null);
 
   const handleLogin = async () => {
-    // Enforce lockout
     if (lockUntil.current && Date.now() < lockUntil.current) {
       const secs = Math.ceil((lockUntil.current - Date.now()) / 1000);
       Alert.alert('Too many attempts', `Please wait ${secs} seconds before trying again.`);
       return;
     }
-
     if (!email.trim() || !password) {
       Alert.alert('', 'Please enter your email and password.');
       return;
     }
-
     setLoading(true);
     try {
       await signIn(email.trim().toLowerCase(), password);
       failCount.current = 0;
       lockUntil.current = null;
-      // _layout.js auth guard will redirect to (tabs) automatically
     } catch (err) {
       const next = failCount.current + 1;
       failCount.current = next;
       if (next >= MAX_ATTEMPTS) {
         lockUntil.current = Date.now() + LOCKOUT_MS;
         failCount.current = 0;
-        Alert.alert(
-          'Account temporarily locked',
-          `Too many failed attempts. Please wait 30 seconds before trying again.`,
-        );
+        Alert.alert('Account temporarily locked', 'Too many failed attempts. Please wait 30 seconds.');
       } else {
         Alert.alert('Sign In Failed', sanitizeAuthError(err));
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setSocialLoading('google');
+    try {
+      const redirectTo = makeRedirectUri({ scheme: 'invoiceapp', path: 'auth-callback' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) throw error;
+      if (!data?.url) throw new Error('No auth URL returned');
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type === 'success' && result.url) {
+        // Session is picked up automatically by onAuthStateChange in _layout.js
+        await supabase.auth.getSession();
+      }
+    } catch (err) {
+      Alert.alert('Google Sign In Failed', err.message ?? 'Please try again.');
+    } finally {
+      setSocialLoading(null);
     }
   };
 
@@ -73,7 +95,7 @@ export default function Login() {
           <Text style={styles.tagline}>Sign in to your account</Text>
         </View>
 
-        {/* Form */}
+        {/* Email / password form */}
         <View style={[styles.card, Shadow.sm]}>
           <View style={styles.field}>
             <Text style={styles.label}>Email</Text>
@@ -109,12 +131,7 @@ export default function Login() {
             </View>
           </View>
 
-          {/* Forgot password */}
-          <TouchableOpacity
-            style={styles.forgotRow}
-            onPress={() => router.push('/(auth)/forgot-password')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.forgotRow} onPress={() => router.push('/(auth)/forgot-password')} activeOpacity={0.7}>
             <Text style={styles.forgotTxt}>Forgot password?</Text>
           </TouchableOpacity>
 
@@ -125,6 +142,29 @@ export default function Login() {
             }
           </TouchableOpacity>
         </View>
+
+        {/* Divider */}
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerTxt}>or continue with</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        {/* Social sign-in */}
+        <TouchableOpacity
+          style={styles.socialBtn}
+          onPress={handleGoogleSignIn}
+          activeOpacity={0.8}
+          disabled={!!socialLoading}
+        >
+          {socialLoading === 'google'
+            ? <ActivityIndicator size="small" color={Colors.text} />
+            : <>
+                <Text style={styles.googleG}>G</Text>
+                <Text style={styles.socialBtnTxt}>Continue with Google</Text>
+              </>
+          }
+        </TouchableOpacity>
 
         {/* Sign up link */}
         <View style={styles.footer}>
@@ -176,15 +216,26 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     paddingHorizontal: Spacing.sm, paddingVertical: 12,
   },
-
   btn: {
     backgroundColor: Colors.primary, borderRadius: Radius.md,
     paddingVertical: 14, alignItems: 'center', marginTop: 4, ...Shadow.sm,
   },
   btnText: { fontSize: FontSize.lg, fontWeight: '700', color: '#fff' },
-
   forgotRow: { alignSelf: 'flex-end' },
   forgotTxt: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600' },
+
+  divider: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginVertical: Spacing.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerTxt: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: '600' },
+
+  socialBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 13, borderRadius: Radius.md,
+    backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.border,
+    ...Shadow.sm,
+  },
+  googleG: { fontSize: 16, fontWeight: '800', color: '#4285F4' },
+  socialBtnTxt: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
 
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.xl },
   footerText: { fontSize: FontSize.md, color: Colors.textSecondary },

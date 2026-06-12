@@ -9,6 +9,8 @@ const KEYS = {
   PROFILES:         'businessProfiles',
   ACTIVE_PROFILE:   'activeProfileId',
   PRODUCTS:         'products',
+  PAYMENT_LOGS:     'paymentLogs',
+  SAVED_NOTES:      'savedNotes',
 };
 
 async function get(key) {
@@ -265,6 +267,62 @@ export async function deleteProduct(id) {
   const updated = products.filter(p => p.id !== id);
   await set(KEYS.PRODUCTS, updated);
   cache.set(KEYS.PRODUCTS, updated);
+}
+
+// ── Payment Logs ──────────────────────────────────────────────────────────────
+// Each entry: { id, invoiceId, invoiceNumber, referenceId, amount, currency,
+//               phone, method, status, initiatedAt, resolvedAt, errorMessage }
+
+export async function getPaymentLogs() {
+  const cached = cache.get(KEYS.PAYMENT_LOGS);
+  if (cached !== undefined) return cached;
+  const data = (await get(KEYS.PAYMENT_LOGS)) ?? [];
+  cache.set(KEYS.PAYMENT_LOGS, data);
+  return data;
+}
+
+export async function getInvoicePaymentLogs(invoiceId) {
+  const logs = await getPaymentLogs();
+  return logs
+    .filter(l => l.invoiceId === invoiceId)
+    .sort((a, b) => new Date(b.initiatedAt) - new Date(a.initiatedAt))
+    .slice(0, 20);
+}
+
+export async function addPaymentLog(log) {
+  const logs = await getPaymentLogs();
+  logs.unshift(log);
+  const trimmed = logs.slice(0, 500);
+  await set(KEYS.PAYMENT_LOGS, trimmed);
+  cache.set(KEYS.PAYMENT_LOGS, trimmed);
+}
+
+export async function updatePaymentLog(logId, updates) {
+  const logs = await getPaymentLogs();
+  const idx = logs.findIndex(l => l.id === logId);
+  if (idx < 0) return;
+  logs[idx] = { ...logs[idx], ...updates };
+  await set(KEYS.PAYMENT_LOGS, logs);
+  cache.set(KEYS.PAYMENT_LOGS, logs);
+}
+
+// ── Saved Notes ───────────────────────────────────────────────────────────────
+// Each note: { id, title, content, createdAt }
+
+export async function getSavedNotes() {
+  return (await get(KEYS.SAVED_NOTES)) ?? [];
+}
+
+export async function saveSavedNote(note) {
+  const notes = await getSavedNotes();
+  const idx = notes.findIndex(n => n.id === note.id);
+  if (idx >= 0) notes[idx] = note; else notes.unshift(note);
+  await set(KEYS.SAVED_NOTES, notes);
+}
+
+export async function deleteSavedNote(id) {
+  const notes = await getSavedNotes();
+  await set(KEYS.SAVED_NOTES, notes.filter(n => n.id !== id));
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────

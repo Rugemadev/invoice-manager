@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "save": "Bika",
     "cancel": "Hagarika",
@@ -32,7 +32,7 @@
   "invoice": {
     "title": "Inyemezabuguzi",
     "proforma": "Inyemezabuguzi ya Proforma",
-    "number": "Inyemezabuguzi N°",
+    "number": "Inyemezabuguzi NÂ°",
     "date": "Itariki",
     "dueDate": "Itariki yo kwishyura",
     "from": "Ivuye",
@@ -75,8 +75,8 @@
     "remind": "Nyibutsa",
     "copyPaymentLink": "Kopiya link yo kwishyura",
     "copyPaymentLinkSub": "Ohereza umukiriya nyuma yo kwishyura",
-    "payWithMoMo": "Ishyura MoMo / Ikarita",
-    "receivePayment": "Akira Ishyurano MoMo / Ikarita",
+    "payWithMoMo": "Ishyura MoMo",
+    "receivePayment": "Akira Ishyurano MoMo",
     "paymentReceived": "Ishyuwe"
   },
   "payment": {
@@ -131,3 +131,4 @@
     "returnBody": "Nta nyemezabuguzi yakoze kuva kera. Komeza gukurikirana ubucuruzi bwawe!"
   }
 }
+
